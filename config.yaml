@@ -1,0 +1,49 @@
+brand:
+  name: Codepaper / UpliftAI.co
+  owner: Vishal Patel
+  one_liner: >
+    We build AI automation systems that replace repetitive ops work for
+    service businesses — agencies, coaches, real estate teams, and SMBs.
+  offers:
+    - AI voice agents (inbound + outbound calls, appointment booking)
+    - Custom AI automations (n8n / Make / GHL workflows)
+    - AI chat agents for websites and WhatsApp
+    - Done-for-you GHL setup + automation
+
+audience:
+  primary: Agency owners, coaches, and service-business founders ($500k–$10M revenue)
+  pain_points:
+    - "Spending 4+ hours/day on repetitive ops (lead intake, follow-up, scheduling)"
+    - "Paying VAs $2-4k/mo for work an AI agent can do in 30 seconds"
+    - "Leaking leads because nobody follows up at 9pm on a Saturday"
+    - "Tried ChatGPT but can't connect it to their actual tools"
+
+voice:
+  - Direct, no fluff, no buzzwords
+  - Specific numbers > vague claims ("saved 14 hrs/wk" not "huge time savings")
+  - First-person, conversational, contractions are fine
+  - One concrete example or story per post
+  - End with a question or CTA — never a vague "DM me to learn more"
+
+viral_discovery:
+  linkedin_keywords:
+    - "AI automation agency"
+    - "AI agents"
+    - "n8n automation"
+    - "GoHighLevel automation"
+    - "AI for agencies"
+  x_keywords:
+    - "AI automation"
+    - "AI agents"
+    - "build in public AI"
+  max_samples_per_run: 20
+  min_engagement: 100   # likes + comments
+
+generation:
+  posts_per_day: 3
+  variants_per_idea: 2   # LinkedIn (long) + X (short)
+  linkedin_target_chars: 1200
+  # X total = body + "\n\n" + URL (~23 chars on t.co). Keep body ≤240 to stay under 280.
+  x_target_chars: 240
+  hashtags_linkedin: 3
+  hashtags_x: 2
