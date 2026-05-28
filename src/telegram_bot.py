@@ -3,6 +3,7 @@
 Auth: only TELEGRAM_ALLOWED_USER_ID can interact. Anyone else is silently ignored.
 Uses long-polling so no public webhook / domain / port binding needed.
 """
+import asyncio
 import logging
 
 from telegram import Update
@@ -34,7 +35,8 @@ async def cmd_start(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
         "/list — show queued ideas\n"
         "/recent — show last posts I made\n"
         "/skip <id> — drop an idea from the queue\n"
-        "/status — system status"
+        "/status — system status\n"
+        "/post_now — fire a post cycle right now (manual override)"
     )
 
 
@@ -104,6 +106,40 @@ async def cmd_status(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(msg)
 
 
+async def cmd_post_now(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+    """Manual override: fire a single post cycle right now.
+
+    Uses the same logic the scheduler uses — pulls next queued idea if any,
+    otherwise falls back to the niche-inspired prompt. Runs synchronously in
+    a thread executor so it doesn't block the bot's event loop.
+    """
+    if not _authorized(update):
+        return
+
+    # Imported lazily so a circular import (scheduler -> telegram_bot via main)
+    # never bites us at startup.
+    from .scheduler import run_post_cycle
+
+    queued = len(db.list_queued(limit=1))
+    if queued == 0:
+        await update.message.reply_text(
+            "⚠ No queued ideas — will use the niche-fallback prompt (Claude may "
+            "invent a generic case study). Reply with a real idea first if you "
+            "want it grounded in something specific, then resend /post_now.\n\n"
+            "Firing now anyway… (5-30 sec)"
+        )
+    else:
+        await update.message.reply_text("🚀 firing post cycle (5-30 sec)…")
+
+    loop = asyncio.get_running_loop()
+    try:
+        await loop.run_in_executor(None, run_post_cycle)
+        await update.message.reply_text("✓ done. Use /recent to see what posted.")
+    except Exception as e:
+        log.exception("post_now failed")
+        await update.message.reply_text(f"✗ failed: {str(e)[:400]}")
+
+
 def build_app() -> Application:
     app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", cmd_start))
@@ -111,5 +147,6 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("recent", cmd_recent))
     app.add_handler(CommandHandler("skip", cmd_skip))
     app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("post_now", cmd_post_now))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_idea))
     return app
