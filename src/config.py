@@ -45,6 +45,9 @@ APIFY_ENABLED = _bool("APIFY_ENABLED", False)
 APIFY_TOKEN = _env("APIFY_TOKEN")
 APIFY_LINKEDIN_ACTOR = _env("APIFY_LINKEDIN_ACTOR", "scarletapi/linkedin-viral-posts-finder")
 APIFY_X_ACTOR = _env("APIFY_X_ACTOR", "apidojo/twitter-scraper-lite")
+# Per-creator scrapers (different actors, profile-based input):
+APIFY_LINKEDIN_CREATOR_ACTOR = _env("APIFY_LINKEDIN_CREATOR_ACTOR", "apimaestro/linkedin-profile-posts")
+APIFY_X_CREATOR_ACTOR = _env("APIFY_X_CREATOR_ACTOR", "apidojo/twitter-user-scraper")
 
 # Schedule
 POST_TIMES = [t.strip() for t in _env("POST_TIMES", "09:00,13:00,18:00").split(",") if t.strip()]

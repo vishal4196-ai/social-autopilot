@@ -38,6 +38,8 @@ viral_discovery:
     - "build in public AI"
   max_samples_per_run: 20
   min_engagement: 100   # likes + comments
+  # When scraping a specific creator (follow/unfollow), how many recent posts to pull each time.
+  max_posts_per_creator: 5
 
 generation:
   posts_per_day: 3

@@ -84,6 +84,26 @@ def _build_viral_context(platform: str, limit: int = 4) -> str:
     )
 
 
+def _build_creators_context(platform: str, limit: int = 5) -> str:
+    """Posts from creators Vishal explicitly tracks. Stronger signal than
+    keyword-scraped trending — these are voices he aligns with stylistically.
+    """
+    rows = db.recent_creator_posts(platform=platform, limit=limit)
+    if not rows:
+        return ""
+    samples = []
+    for r in rows:
+        snippet = r["text"][:700].replace("\n", " ")
+        author = r["source_creator"] or r["author"] or "creator"
+        samples.append(f"- [@{author}, {r['engagement']} engagement] {snippet}")
+    return (
+        f"\nCREATORS VISHAL FOLLOWS ON {platform.upper()} (these are voices whose style/angle "
+        f"resonates — study their HOOK PATTERNS, format choices, and topical lens, then REMIX "
+        f"into our AI-automation niche. Do not copy phrasing or claim their stories as ours.):\n"
+        + "\n".join(samples)
+    )
+
+
 def _append_utm(url: str, post_id_hint: str, platform: str) -> str:
     parsed = urlparse(url)
     extra = urlencode({
@@ -113,9 +133,12 @@ def generate(idea_text: str, *, post_id_hint: str) -> list[GeneratedPost]:
     system_prompt = _build_system_prompt()
     viral_li = _build_viral_context("linkedin")
     viral_x = _build_viral_context("x")
+    creators_li = _build_creators_context("linkedin")
+    creators_x = _build_creators_context("x")
 
     user_msg = (
         f"CONTENT IDEA:\n{idea_text}\n"
+        f"{creators_li}\n{creators_x}\n"
         f"{viral_li}\n{viral_x}\n\n"
         "Produce the two variants now. Return JSON only."
     )

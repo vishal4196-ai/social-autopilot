@@ -34,27 +34,42 @@ INTENTS:
 - recent: They want to see what was posted recently. Examples: "what did you post", "show recent posts", "what went out today", "show the last ones", "recent"
 - status: Health/system check. Examples: "status", "are you alive", "how are you", "system check"
 - skip: Remove a queued idea. MUST include a number. Examples: "skip 3", "delete idea 2", "remove 5", "drop number 4", "scrap idea 7"
+- follow: Start tracking a creator's posts as remix inspiration. MUST extract platform (linkedin or x) and handle. Examples: "follow justin welsh on linkedin", "track @greg_isenberg on x", "add @naval to twitter", "start watching alex hormozi on linkedin"
+- unfollow: Stop tracking a creator. MUST extract platform and handle. Examples: "unfollow @greg_isenberg", "stop tracking justin welsh on linkedin", "remove naval from x"
+- creators: List tracked creators. Examples: "who do you follow", "show creators", "list tracked", "which creators are we watching"
 - help: Show help. Examples: "help", "what can you do", "commands", "how does this work"
 - idea: A NEW content idea to queue. This is the DEFAULT — anything that sounds like a topic, story, lesson, client win, hot take, observation, or note about their business or audience.
 - small_talk: Pure conversational with no action needed. Examples: "thanks", "cool", "ok", "got it", "nice", "👍"
 
 OUTPUT JSON ONLY:
-{"intent": "<one of above>", "skip_id": <integer if intent=skip else null>}
+{
+  "intent": "<one of above>",
+  "skip_id": <integer if intent=skip else null>,
+  "platform": "<'linkedin' or 'x' if intent=follow or unfollow else null>",
+  "handle": "<the @username without the @ symbol, lowercased, if intent=follow or unfollow else null>"
+}
 
 DECISION RULES (apply in order):
 1. If unsure between "idea" and a command → prefer "idea". Better to over-queue than to skip a real thought.
 2. If the message is a short reactive phrase (1-3 words) and doesn't match a command → "small_talk".
-3. "skip" requires a number. If they say "skip" without a number → "help" (we'll prompt them).
+3. "skip" requires a number; "follow"/"unfollow" require BOTH platform and handle. If any required field is missing → "help".
+4. For follow/unfollow: "twitter" = "x". "linkedin" includes any phrasing like "li" or "linked in". If the platform is genuinely unclear, default to "linkedin" (Vishal's primary).
+5. Strip the @ from handles and lowercase them. If a handle has spaces ("justin welsh") keep it as-is (the user might be using display name — downstream will resolve).
 """
 
 
 @dataclass
 class Intent:
-    name: str                # idea | post_now | list | recent | status | skip | help | small_talk
+    name: str                # idea | post_now | list | recent | status | skip | follow | unfollow | creators | help | small_talk
     skip_id: int | None = None
+    platform: str | None = None        # for follow/unfollow
+    handle: str | None = None          # for follow/unfollow
 
 
-_VALID = {"idea", "post_now", "list", "recent", "status", "skip", "help", "small_talk"}
+_VALID = {
+    "idea", "post_now", "list", "recent", "status", "skip",
+    "follow", "unfollow", "creators", "help", "small_talk",
+}
 
 
 def classify(text: str) -> Intent:
@@ -81,11 +96,20 @@ def classify(text: str) -> Intent:
             return Intent("recent")
         if cmd == "status":
             return Intent("status")
+        if cmd in {"creators", "following"}:
+            return Intent("creators")
         if cmd in {"help", "start"}:
             return Intent("help")
         if cmd == "skip":
             if len(parts) > 1 and parts[1].isdigit():
                 return Intent("skip", int(parts[1]))
+            return Intent("help")
+        if cmd in {"follow", "unfollow"}:
+            # /follow <linkedin|x> <handle>
+            if len(parts) >= 3 and parts[1].lower() in {"linkedin", "x", "twitter"}:
+                platform = "x" if parts[1].lower() in {"x", "twitter"} else "linkedin"
+                handle = parts[2].lstrip("@").lower()
+                return Intent(cmd, platform=platform, handle=handle)
             return Intent("help")
         return Intent("help")
 
@@ -107,10 +131,27 @@ def classify(text: str) -> Intent:
         if name not in _VALID:
             name = "idea"
         skip_id = data.get("skip_id")
+        platform = data.get("platform")
+        handle = data.get("handle")
+
         if name == "skip":
             if not isinstance(skip_id, int):
                 return Intent("help")
-            return Intent("skip", skip_id)
+            return Intent("skip", skip_id=skip_id)
+
+        if name in {"follow", "unfollow"}:
+            if not platform or not handle:
+                return Intent("help")
+            platform = str(platform).lower()
+            if platform in {"twitter", "tw"}:
+                platform = "x"
+            if platform not in {"linkedin", "x"}:
+                return Intent("help")
+            handle = str(handle).strip().lstrip("@").lower()
+            if not handle:
+                return Intent("help")
+            return Intent(name, platform=platform, handle=handle)
+
         return Intent(name)
     except Exception as e:
         log.warning("router failed (%s) — defaulting to 'idea'", e)

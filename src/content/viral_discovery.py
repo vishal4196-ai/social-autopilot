@@ -1,7 +1,11 @@
-"""Pull recent high-engagement posts from LinkedIn + X via Apify actors.
+"""Pull recent posts from LinkedIn + X via Apify actors.
 
-We don't post these — we feed them into the prompt as hook/structure inspiration
-so generated posts stay on-trend without copying.
+TWO modes:
+1. Keyword search — generic niche trends ("AI automation agency", "n8n", etc.)
+2. Per-creator — recent posts from accounts the owner explicitly follows.
+
+Generator treats them as separate signals: trends = "what's working broadly",
+creators = "voices Vishal wants to remix into our niche".
 """
 import logging
 import time
@@ -24,6 +28,8 @@ def _run_actor_sync(actor: str, payload: dict, timeout: int = 180) -> list[dict]
     r.raise_for_status()
     return r.json()
 
+
+# ── Mode 1: keyword-based trending ────────────────────────
 
 def fetch_linkedin_viral() -> list[dict]:
     keywords = config.BRAND_CONFIG["viral_discovery"]["linkedin_keywords"]
@@ -100,14 +106,119 @@ def fetch_x_viral() -> list[dict]:
     return samples
 
 
+# ── Mode 2: per-creator scraping ──────────────────────────
+
+def _fetch_linkedin_creator(handle: str) -> list[dict]:
+    """One creator → up to N recent posts."""
+    max_posts = int(config.BRAND_CONFIG["viral_discovery"].get("max_posts_per_creator", 5))
+    profile_url = f"https://www.linkedin.com/in/{handle}/"
+    # Different actors accept different input shapes — pass several common keys
+    # so swapping APIFY_LINKEDIN_CREATOR_ACTOR doesn't require code changes.
+    payload = {
+        "urls": [profile_url],
+        "profileUrls": [profile_url],
+        "usernames": [handle],
+        "limit": max_posts,
+        "postsPerProfile": max_posts,
+    }
+    try:
+        items = _run_actor_sync(config.APIFY_LINKEDIN_CREATOR_ACTOR, payload)
+    except Exception as e:
+        log.warning("LinkedIn creator actor failed for %s: %s", handle, e)
+        return []
+
+    out = []
+    for it in items[:max_posts]:
+        text = (it.get("text") or it.get("content") or it.get("commentary") or "").strip()
+        if not text:
+            continue
+        likes = int(it.get("likes") or it.get("numLikes") or it.get("reactionsCount") or 0)
+        comments = int(it.get("comments") or it.get("numComments") or it.get("commentsCount") or 0)
+        out.append({
+            "platform": "linkedin",
+            "author": handle,
+            "text": text[:4000],
+            "engagement": likes + comments,
+            "url": it.get("url") or it.get("postUrl") or "",
+            "source_creator": handle,
+        })
+    return out
+
+
+def _fetch_x_creator(handle: str) -> list[dict]:
+    max_posts = int(config.BRAND_CONFIG["viral_discovery"].get("max_posts_per_creator", 5))
+    payload = {
+        "usernames": [handle],
+        "twitterHandles": [handle],
+        "handles": [handle],
+        "maxItems": max_posts,
+        "tweetsDesired": max_posts,
+    }
+    try:
+        items = _run_actor_sync(config.APIFY_X_CREATOR_ACTOR, payload)
+    except Exception as e:
+        log.warning("X creator actor failed for %s: %s", handle, e)
+        return []
+
+    out = []
+    for it in items[:max_posts]:
+        text = (it.get("text") or it.get("full_text") or "").strip()
+        if not text:
+            continue
+        likes = int(it.get("likeCount") or it.get("favorite_count") or 0)
+        replies = int(it.get("replyCount") or it.get("reply_count") or 0)
+        reposts = int(it.get("retweetCount") or it.get("retweet_count") or 0)
+        out.append({
+            "platform": "x",
+            "author": handle,
+            "text": text[:4000],
+            "engagement": likes + replies + reposts,
+            "url": it.get("url") or it.get("twitterUrl") or "",
+            "source_creator": handle,
+        })
+    return out
+
+
+def fetch_all_creators() -> list[dict]:
+    """Iterate over every tracked creator across platforms."""
+    creators = db.list_creators()
+    if not creators:
+        return []
+    samples: list[dict] = []
+    for c in creators:
+        platform = c["platform"]
+        handle = c["handle"]
+        if platform == "linkedin":
+            rows = _fetch_linkedin_creator(handle)
+        elif platform == "x":
+            rows = _fetch_x_creator(handle)
+        else:
+            log.warning("Unknown platform %r for creator %s", platform, handle)
+            continue
+        if rows:
+            samples.extend(rows)
+            db.mark_creator_scraped(c["id"])
+        time.sleep(1)  # be polite to Apify
+    return samples
+
+
+# ── Entry point used by scheduler ─────────────────────────
+
 def refresh() -> dict:
-    """Run discovery for both platforms; persist results. Safe to call ad-hoc."""
+    """Run both modes; persist results. Safe to call ad-hoc."""
     if not config.APIFY_ENABLED:
-        log.info("Apify discovery disabled — skipping")
-        return {"linkedin": 0, "x": 0, "skipped": True}
+        log.info("Apify disabled — skipping discovery")
+        return {"linkedin_trending": 0, "x_trending": 0, "creator_posts": 0, "skipped": True}
 
     li = fetch_linkedin_viral()
     x = fetch_x_viral()
-    db.save_viral_samples(li + x)
-    log.info("Viral discovery: %d LinkedIn, %d X", len(li), len(x))
-    return {"linkedin": len(li), "x": len(x), "skipped": False}
+    creators = fetch_all_creators()
+    db.save_viral_samples(li + x + creators)
+    summary = {
+        "linkedin_trending": len(li),
+        "x_trending": len(x),
+        "creator_posts": len(creators),
+        "skipped": False,
+    }
+    log.info("Discovery: %s", summary)
+    return summary
