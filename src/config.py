@@ -62,6 +62,8 @@ WEB_SESSION_SECRET = _env(
     "WEB_SESSION_SECRET",
     "change-me-set-a-long-random-string-in-env",
 )
+WEB_USERNAME = _env("WEB_USERNAME", "vishal")
+WEB_PASSWORD = _env("WEB_PASSWORD", "change-me-set-in-env")
 
 # Storage
 DB_PATH = _env("DB_PATH", str(ROOT / "autopilot.db"))

@@ -56,33 +56,30 @@ def _truncate(text: str, n: int) -> str:
 
 def register(app: FastAPI, templates: Jinja2Templates) -> None:
 
-    # ─── Auth: login page, request link, verify link, logout ──────
+    # ─── Auth: login form + handler + logout ────────────────────
 
     @app.get("/login", response_class=HTMLResponse)
     async def get_login(request: Request, msg: str = ""):
         if auth.is_authed(request):
             return RedirectResponse(url="/", status_code=303)
-        return templates.TemplateResponse(request, "login.html", {"msg": msg})
+        return templates.TemplateResponse(
+            request, "login.html", {"msg": msg, "msg_ok": False}
+        )
 
-    @app.post("/login/request", response_class=HTMLResponse)
-    async def post_login_request(request: Request):
-        # Build base URL from incoming request headers (Railway proxies).
-        scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
-        host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost"
-        base = f"{scheme}://{host}"
-        ok, msg = await auth.send_login_link(base)
+    @app.post("/login", response_class=HTMLResponse)
+    async def post_login(
+        request: Request,
+        username: str = Form(...),
+        password: str = Form(...),
+    ):
+        if auth.verify_password(username, password):
+            auth.set_authed(request)
+            return RedirectResponse(url="/", status_code=303)
         return templates.TemplateResponse(
             request,
             "login.html",
-            {"msg": msg, "msg_ok": ok},
+            {"msg": "Wrong username or password.", "msg_ok": False},
         )
-
-    @app.get("/login/verify")
-    async def get_login_verify(request: Request, token: str = ""):
-        if not token or not auth.consume_token(token):
-            return RedirectResponse(url="/login?msg=Invalid+or+expired+link", status_code=303)
-        auth.set_authed(request)
-        return RedirectResponse(url="/", status_code=303)
 
     @app.get("/logout")
     async def get_logout(request: Request):

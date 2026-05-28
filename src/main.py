@@ -12,7 +12,6 @@ import uvicorn
 
 from . import config, db, scheduler, telegram_bot
 from .web.app import create_app
-from .web import auth as web_auth
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,8 +34,6 @@ async def amain() -> None:
     await tg_app.initialize()
     await tg_app.start()
     await tg_app.updater.start_polling(drop_pending_updates=True)
-    # So the web layer can DM magic-link logins to Vishal
-    web_auth.register_telegram_app(tg_app)
 
     # Web app (uvicorn) — binds the public port
     web_app = create_app()
