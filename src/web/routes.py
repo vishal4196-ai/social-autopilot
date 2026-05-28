@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import calendar as cal_mod
 import logging
+from collections import defaultdict
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -14,6 +16,34 @@ from .. import config, db
 from . import auth
 
 log = logging.getLogger(__name__)
+
+DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+
+def _post_calendar_date(p, tz: ZoneInfo) -> datetime:
+    """Best date for placing a post on the calendar: scheduled_for if set
+    (local tz), else created_at (stored as naive UTC)."""
+    raw = p["scheduled_for"]
+    if raw:
+        try:
+            dt = datetime.fromisoformat(raw)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=tz)
+            return dt.astimezone(tz)
+        except (ValueError, TypeError):
+            pass
+    try:
+        dt = datetime.fromisoformat(p["created_at"]).replace(tzinfo=ZoneInfo("UTC"))
+        return dt.astimezone(tz)
+    except (ValueError, TypeError):
+        return datetime.now(tz)
+
+
+def _time_label(dt: datetime) -> str:
+    """Cross-platform 12-hour label (avoids %-I which breaks on Windows)."""
+    hour12 = dt.hour % 12 or 12
+    ampm = "AM" if dt.hour < 12 else "PM"
+    return f"{hour12}:{dt.minute:02d} {ampm}"
 
 
 # ── Auth helpers ──────────────────────────────────────────
@@ -150,14 +180,77 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
     # ─── Posts history ────────────────────────────────────
 
     @app.get("/posts", response_class=HTMLResponse)
-    async def posts_get(request: Request):
+    async def posts_get(
+        request: Request,
+        year: int | None = None,
+        month: int | None = None,
+        view: str = "calendar",
+    ):
         if r := _require_auth(request):
             return r
-        posts = db.recent_posts(limit=50)
+
+        tz = ZoneInfo(config.TIMEZONE)
+        now_local = datetime.now(tz)
+        posts = db.recent_posts(limit=1000)
+
+        # List view: simple chronological feed
+        if view == "list":
+            return templates.TemplateResponse(
+                request,
+                "posts.html",
+                {"page": "posts", "view": "list", "posts": posts, "_t": _truncate},
+            )
+
+        # Calendar view
+        y = year or now_local.year
+        m = month or now_local.month
+
+        buckets: dict[tuple[int, int, int], list] = defaultdict(list)
+        for p in posts:
+            d = _post_calendar_date(p, tz)
+            buckets[(d.year, d.month, d.day)].append({
+                "time": _time_label(d),
+                "sort": d,
+                "platform": p["platform"],
+                "snippet": _truncate(p["text"], 42),
+                "status": p["status"],
+            })
+
+        cal_obj = cal_mod.Calendar(firstweekday=6)  # Sunday-first
+        weeks = []
+        for week in cal_obj.monthdayscalendar(y, m):
+            cells = []
+            for day in week:
+                if day == 0:
+                    cells.append({"day": None, "posts": [], "is_today": False})
+                else:
+                    key = (y, m, day)
+                    day_posts = sorted(buckets.get(key, []), key=lambda x: x["sort"])
+                    cells.append({
+                        "day": day,
+                        "is_today": (
+                            y == now_local.year and m == now_local.month and day == now_local.day
+                        ),
+                        "posts": day_posts,
+                    })
+            weeks.append(cells)
+
+        prev_y, prev_m = (y - 1, 12) if m == 1 else (y, m - 1)
+        next_y, next_m = (y + 1, 1) if m == 12 else (y, m + 1)
+
         return templates.TemplateResponse(
             request,
             "posts.html",
-            {"page": "posts", "posts": posts, "_t": _truncate},
+            {
+                "page": "posts",
+                "view": "calendar",
+                "weeks": weeks,
+                "day_headers": DAY_HEADERS,
+                "month_label": datetime(y, m, 1).strftime("%B %Y"),
+                "prev_y": prev_y, "prev_m": prev_m,
+                "next_y": next_y, "next_m": next_m,
+                "timezone": config.TIMEZONE,
+            },
         )
 
     # ─── Creators ─────────────────────────────────────────
@@ -264,8 +357,10 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
 
         # Compute next slot for scheduling
         schedule_for = None
+        schedule_iso = None
         if mode == "schedule":
             schedule_for = _next_slot_payload()
+            schedule_iso = f"{schedule_for['date']}T{schedule_for['time']}:00"
 
         results = []
         for platform_key, text in (("linkedin", linkedin_text), ("x", x_text)):
@@ -284,6 +379,7 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
                     cta_url="",  # already inline if present
                     status="scheduled" if schedule_for else "published",
                     postsyncer_post_id=ps_id,
+                    scheduled_for=schedule_iso,
                 )
                 results.append((platform_key, True, None))
             except Exception as e:
