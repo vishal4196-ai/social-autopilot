@@ -1,8 +1,16 @@
 """Claude-powered post generator.
 
-Builds a system prompt from brand config (cached for ~5 min cost savings),
-then asks for two variants per idea: LinkedIn long-form + X short-form.
-Returns clean text — CTA URL is appended by the caller with per-post UTMs.
+The prompt gives Claude editorial autonomy: when to include the booking link,
+when to skip hashtags, which post format to use. We don't append CTAs
+mechanically anymore — Claude embeds a {{CTA}} token where it wants the URL
+to appear (if at all), and the substitution happens here.
+
+Inputs to the prompt:
+- Brand voice, audience, offers (from config.yaml)
+- "Creators Vishal follows" — strong remix signal from tracked accounts
+- "Recent viral posts in niche" — broader trending signal (keyword-scraped)
+- "Posts you wrote recently" — so Claude doesn't repeat formats back-to-back
+- The user's idea (or remix-from-URL framing)
 """
 from __future__ import annotations
 
@@ -20,27 +28,30 @@ log = logging.getLogger(__name__)
 
 _client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
 
+CTA_TOKEN = "{{CTA}}"
+
 
 @dataclass
 class GeneratedPost:
     platform: str        # 'linkedin' | 'x'
-    text: str            # final text including CTA line
-    cta_url: str         # the URL with UTMs (also embedded in text)
+    text: str            # final text — CTA token (if any) already substituted
+    cta_url: str         # the URL with UTMs (empty string if Claude chose no CTA)
+    included_cta: bool
 
 
 def _build_system_prompt() -> str:
     b = config.BRAND_CONFIG
-    g = b["generation"]
     voice_bullets = "\n".join(f"- {v}" for v in b["voice"])
     pain_bullets = "\n".join(f"- {p}" for p in b["audience"]["pain_points"])
     offers_bullets = "\n".join(f"- {o}" for o in b["brand"]["offers"])
 
-    return f"""You are the content strategist for {b['brand']['name']} (owner: {b['brand']['owner']}).
+    return f"""You write social posts for {b['brand']['name']} (owner: {b['brand']['owner']}).
+You're a thoughtful content creator, NOT a marketing department.
 
 ABOUT THE BUSINESS
 {b['brand']['one_liner']}
 
-OFFERS
+OFFERS (don't recite these — they inform the angle)
 {offers_bullets}
 
 AUDIENCE
@@ -51,22 +62,83 @@ Pain points they feel daily:
 VOICE
 {voice_bullets}
 
+═══════════════════════════════════════════════════════════════
 YOUR JOB
-Given a content idea (or a viral post for inspiration), produce TWO post variants:
 
-1. LinkedIn variant — ~{g['linkedin_target_chars']} characters, long-form, with line breaks,
-   includes a story or concrete example, ends with a CTA line and {g['hashtags_linkedin']} hashtags.
-2. X (Twitter) variant — body must be ≤{g['x_target_chars']} chars (the caller will append a URL
-   that consumes ~25 more chars, so X's 280 limit is preserved). Punchy, single hook + payoff,
-   ends with the spoken CTA but tighter, {g['hashtags_x']} hashtags max.
+Given a content idea (or a source post to remix), produce ONE post each for
+LinkedIn and X. The two should share an angle but be format-tuned for each
+platform. They are NOT just the same post truncated.
 
-CRITICAL RULES
-- Never use the phrase "game changer", "unlock", "leverage", "in today's fast-paced world", or em-dashes inside marketing-speak. No emojis unless the idea demands one (max 1).
-- Always lead with a specific, concrete hook (a number, a contradiction, a tiny story). Never start with "In today's…" or "As an AI agency…".
-- The CTA must be ACTION-oriented and reference the audience's pain. Example: "If you're losing leads after 6pm, I'll show you the exact agent setup we use — link below."
-- Output JSON ONLY in this exact shape:
-{{"linkedin": "<full linkedin post text without CTA URL>", "x": "<full x post text without CTA URL>"}}
-- Do NOT include the CTA URL itself — the caller appends it. Just leave the CTA *line* with phrasing like "Link in comments" or "DM me 'AGENT'" or end with the spoken CTA — the URL will be added on its own line at the end.
+═══════════════════════════════════════════════════════════════
+CALL-TO-ACTION POLICY (read this carefully)
+
+Most of the best content on social media has NO direct CTA. It's insight,
+story, or value that builds trust. Use the booking link sparingly.
+
+DEFAULT: no booking link. Just end with the payoff or a question.
+
+INCLUDE A BOOKING LINK only when:
+  • Post is a case study with a concrete outcome a reader might want for themselves
+  • Post is a deep-teaching breakdown of something Vishal can implement for them
+  • Post naturally arrives at "if this resonates, talk to me" without forcing it
+
+When you do include a link, embed the literal token {CTA_TOKEN} where you want
+the URL placed (the system substitutes it for a tracked booking URL). Phrase
+the surrounding text softly: "If this maps to your situation, {CTA_TOKEN}"
+or "Same playbook is at {CTA_TOKEN} if you want it" — NOT "Book a free call!"
+
+TARGET FREQUENCY: roughly 1 in 3 posts has a CTA. Two in three should not.
+If the idea is a pure value bomb, a hot take, or a story without a clear "buy"
+moment — NO {CTA_TOKEN}.
+
+═══════════════════════════════════════════════════════════════
+HASHTAGS POLICY
+
+Use sparingly. Generic tags (#AI, #automation, #marketing, #leadership) are
+spam-coded — skip them. A niche-specific one (e.g. #n8n, #GoHighLevel) can
+help discoverability but only if it genuinely fits.
+
+LinkedIn: 0-2 hashtags. Often zero is right.
+X: 0-1 hashtags. Often zero is right.
+
+═══════════════════════════════════════════════════════════════
+POST VARIETY
+
+Don't ship the same template twice. Look at "POSTS YOU WROTE RECENTLY" below
+and choose a DIFFERENT format. Mix from:
+
+  • Short banger (2-4 sharp lines, ends on a contradiction or punch)
+  • Case study / story (a real or representative situation + outcome)
+  • Framework / listicle (3 steps, 5 things, etc.)
+  • Hot take / contrarian angle ("everyone says X. Wrong. Here's why.")
+  • Question post (asks the audience something, invites discussion)
+  • Behind-the-scenes (what we're building / how we work)
+  • Lesson learned (what didn't work + what we figured out)
+
+═══════════════════════════════════════════════════════════════
+HARD RULES
+
+- Never use: "game changer", "unlock", "leverage", "in today's fast-paced world",
+  "synergy", "revolutionize", em-dashes inside marketing-speak.
+- Lead with a SPECIFIC, concrete hook. Number, contradiction, story, or claim.
+  Never start with "In today's..." or "As an AI agency...".
+- One emoji max per post, only if it earns its keep. Default: zero.
+- X length: body ≤{int(config.BRAND_CONFIG['generation']['x_target_chars'])} characters
+  (the system reserves ~25 chars for the URL if you include {CTA_TOKEN}).
+- LinkedIn length: aim for {int(config.BRAND_CONFIG['generation']['linkedin_target_chars'])} chars,
+  with line breaks every 1-3 sentences for scannability.
+
+═══════════════════════════════════════════════════════════════
+OUTPUT FORMAT
+
+Return JSON ONLY, no prose, no fences:
+{{
+  "linkedin": "<full linkedin post text>",
+  "x": "<full x post text>"
+}}
+
+If you want the booking link in a post, put {CTA_TOKEN} where the URL should appear.
+If a post should have no link, just omit the token entirely.
 """
 
 
@@ -85,9 +157,6 @@ def _build_viral_context(platform: str, limit: int = 4) -> str:
 
 
 def _build_creators_context(platform: str, limit: int = 5) -> str:
-    """Posts from creators Vishal explicitly tracks. Stronger signal than
-    keyword-scraped trending — these are voices he aligns with stylistically.
-    """
     rows = db.recent_creator_posts(platform=platform, limit=limit)
     if not rows:
         return ""
@@ -97,10 +166,35 @@ def _build_creators_context(platform: str, limit: int = 5) -> str:
         author = r["source_creator"] or r["author"] or "creator"
         samples.append(f"- [@{author}, {r['engagement']} engagement] {snippet}")
     return (
-        f"\nCREATORS VISHAL FOLLOWS ON {platform.upper()} (these are voices whose style/angle "
-        f"resonates — study their HOOK PATTERNS, format choices, and topical lens, then REMIX "
-        f"into our AI-automation niche. Do not copy phrasing or claim their stories as ours.):\n"
+        f"\nCREATORS VISHAL FOLLOWS ON {platform.upper()} (voices whose style/angle "
+        f"resonates — study their hook patterns, format choices, and topical lens, "
+        f"then REMIX into our niche. Do not copy phrasing or claim their stories as ours):\n"
         + "\n".join(samples)
+    )
+
+
+def _build_recent_self_context(limit: int = 4) -> str:
+    """Show Claude the last few posts WE wrote so it picks a different format."""
+    rows = db.recent_posts(limit=limit * 2)  # *2 because we have LI + X per cycle
+    if not rows:
+        return ""
+    # Dedupe by post text first ~120 chars (so the same idea on LI + X doesn't double-count)
+    seen: set[str] = set()
+    samples: list[str] = []
+    for r in rows:
+        key = r["text"][:120]
+        if key in seen:
+            continue
+        seen.add(key)
+        snippet = r["text"][:300].replace("\n", " ")
+        samples.append(f"- [{r['platform']}] {snippet}")
+        if len(samples) >= limit:
+            break
+    if not samples:
+        return ""
+    return (
+        "\nPOSTS YOU WROTE RECENTLY (avoid repeating these formats / hooks / angles — "
+        "pick a different shape):\n" + "\n".join(samples)
     )
 
 
@@ -117,7 +211,6 @@ def _append_utm(url: str, post_id_hint: str, platform: str) -> str:
 
 
 def _extract_json(raw: str) -> dict:
-    """Claude usually returns clean JSON, but defensively strip fences."""
     s = raw.strip()
     if s.startswith("```"):
         s = re.sub(r"^```(?:json)?", "", s).rstrip("`").strip()
@@ -131,16 +224,19 @@ def _extract_json(raw: str) -> dict:
 def generate(idea_text: str, *, post_id_hint: str) -> list[GeneratedPost]:
     """Generate LinkedIn + X variants for one idea."""
     system_prompt = _build_system_prompt()
-    viral_li = _build_viral_context("linkedin")
-    viral_x = _build_viral_context("x")
     creators_li = _build_creators_context("linkedin")
     creators_x = _build_creators_context("x")
+    viral_li = _build_viral_context("linkedin")
+    viral_x = _build_viral_context("x")
+    recent_self = _build_recent_self_context()
 
     user_msg = (
         f"CONTENT IDEA:\n{idea_text}\n"
         f"{creators_li}\n{creators_x}\n"
-        f"{viral_li}\n{viral_x}\n\n"
-        "Produce the two variants now. Return JSON only."
+        f"{viral_li}\n{viral_x}\n"
+        f"{recent_self}\n\n"
+        "Write the two variants now. Decide per-post whether to include {{CTA}}. "
+        "Return JSON only."
     )
 
     resp = _client.messages.create(
@@ -173,10 +269,40 @@ def generate(idea_text: str, *, post_id_hint: str) -> list[GeneratedPost]:
         body = (data.get(platform_key) or "").strip()
         if not body:
             continue
-        if platform_key == "x" and len(body) > x_max_body:
-            log.warning("X body %d chars > %d — truncating", len(body), x_max_body)
-            body = body[: x_max_body - 1].rstrip() + "…"
-        cta_url = _append_utm(config.CTA_URL, post_id_hint, platform_key)
-        full_text = f"{body}\n\n{cta_url}"
-        results.append(GeneratedPost(platform=platform_key, text=full_text, cta_url=cta_url))
+
+        has_cta = CTA_TOKEN in body
+        cta_url = _append_utm(config.CTA_URL, post_id_hint, platform_key) if has_cta else ""
+
+        if has_cta:
+            body = body.replace(CTA_TOKEN, cta_url)
+
+        # X length safety net — only trim if no CTA URL inside (URL counts as
+        # ~23 chars on X regardless of real length, but we leave room).
+        if platform_key == "x":
+            # For length check, count the URL as ~25 chars even though it's longer literally.
+            effective_len = len(body) - (len(cta_url) - 25 if cta_url else 0)
+            if effective_len > x_max_body + 25:
+                log.warning("X body %d effective chars > limit — truncating", effective_len)
+                # Trim from the body portion (not the URL). Simplistic but safe.
+                if cta_url and cta_url in body:
+                    before, _, after = body.partition(cta_url)
+                    keep = x_max_body - len(after) - 30
+                    if keep > 50:
+                        before = before[:keep].rstrip() + "… "
+                    body = before + cta_url + after
+                else:
+                    body = body[: x_max_body - 1].rstrip() + "…"
+
+        results.append(GeneratedPost(
+            platform=platform_key,
+            text=body,
+            cta_url=cta_url,
+            included_cta=has_cta,
+        ))
+
+    log.info(
+        "Generated %d posts (CTA included: %s)",
+        len(results),
+        [r.included_cta for r in results],
+    )
     return results

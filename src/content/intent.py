@@ -61,15 +61,18 @@ DECISION RULES (apply in order):
 
 @dataclass
 class Intent:
-    name: str                # idea | post_now | list | recent | status | skip | follow | unfollow | creators | help | small_talk
+    name: str                # idea | post_now | list | recent | status | skip | follow | unfollow | creators | refresh | remix_url | help | small_talk
     skip_id: int | None = None
     platform: str | None = None        # for follow/unfollow
     handle: str | None = None          # for follow/unfollow
+    url: str | None = None             # for remix_url
+    extra_context: str | None = None   # surrounding text when URL has context
 
 
 _VALID = {
     "idea", "post_now", "list", "recent", "status", "skip",
-    "follow", "unfollow", "creators", "refresh", "help", "small_talk",
+    "follow", "unfollow", "creators", "refresh", "remix_url",
+    "help", "small_talk",
 }
 
 
@@ -82,6 +85,15 @@ def classify(text: str) -> Intent:
     text = (text or "").strip()
     if not text:
         return Intent("idea")
+
+    # ─── Fast path: social post URL → remix. ──────────────────────────
+    # Cheaper + more reliable than asking the LLM to extract URLs.
+    from .url_fetch import detect_url  # local import: keeps router cheap if no URL
+    url = detect_url(text)
+    if url:
+        # Everything around the URL is optional surrounding context.
+        extra = text.replace(url, "").strip().strip(".:!?,-").strip() or None
+        return Intent("remix_url", url=url, extra_context=extra)
 
     # ─── Fast path: slash commands skip the LLM entirely. ─────────────
     if text.startswith("/"):

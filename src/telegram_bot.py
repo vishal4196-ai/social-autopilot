@@ -39,7 +39,10 @@ def _help_text() -> str:
         "• \"follow justin welsh on linkedin\" → track him\n"
         "• \"track @greg_isenberg on x\" → track him\n"
         "• \"who do you follow?\" → list tracked\n"
-        "• \"unfollow @greg_isenberg\" → stop tracking\n\n"
+        "• \"unfollow @greg_isenberg\" → stop tracking\n"
+        "• \"refresh\" → scrape now (don't wait for morning cron)\n\n"
+        "🔗 Paste a post URL → I read it and queue a remix\n"
+        "  Just send the LinkedIn or X URL (with optional note: \"this hook is fire — remix it\")\n\n"
         "⚙ \"status\" → system check"
     )
 
@@ -133,6 +136,61 @@ async def do_list_creators(send) -> None:
     await send("Tracked creators:" + "\n".join(lines))
 
 
+async def do_remix_url(url: str, extra_context: str | None, send) -> None:
+    """Vishal pasted a LinkedIn/X post URL → fetch it, queue a remix idea."""
+    if not config.APIFY_ENABLED:
+        await send(
+            "Apify is off — I can't fetch the post. Paste the post text directly "
+            "and I'll remix that, or enable APIFY_ENABLED in Railway."
+        )
+        return
+
+    from .content import url_fetch
+    await send(f"🔍 reading the post at {url[:60]}…")
+
+    loop = asyncio.get_running_loop()
+    try:
+        post = await loop.run_in_executor(None, url_fetch.fetch_single_post, url)
+    except Exception as e:
+        log.exception("url_fetch threw")
+        post = None
+        await send(f"✗ fetch errored: {str(e)[:200]}")
+        return
+
+    if not post:
+        await send(
+            "✗ couldn't read that post (actor returned empty). Paste the post "
+            "text here instead and I'll remix it."
+        )
+        return
+
+    snippet = post["text"][:200].replace("\n", " ")
+    framing_lines = [
+        "REMIX SOURCE POST — adapt its hook style, format, and angle into our AI-automation niche.",
+        f"Source: @{post['author']} on {post['platform']} ({post['engagement']} engagement)",
+        f"URL: {url}",
+    ]
+    if extra_context:
+        framing_lines.append(f"Vishal's note about it: {extra_context}")
+    framing_lines.append("")
+    framing_lines.append("Original post:")
+    framing_lines.append(f'"""\n{post["text"]}\n"""')
+    framing_lines.append("")
+    framing_lines.append(
+        "Write our version. Do NOT copy the source's wording or claim its story "
+        "as ours. Take what made it work — the angle, the structure, the energy — "
+        "and apply it to Vishal's audience (agency owners drowning in repetitive ops)."
+    )
+    remix_idea = "\n".join(framing_lines)
+
+    idea_id = db.add_idea(remix_idea, source="url_remix")
+    await send(
+        f"✓ queued (idea #{idea_id}) — remix from @{post['author']}.\n"
+        f"Preview: \"{snippet}…\"\n\n"
+        f"Say \"post now\" to fire immediately, or it'll go on the next scheduled slot."
+    )
+
+
 async def do_refresh(send) -> None:
     """Trigger an Apify discovery run on demand (creators + viral keywords)."""
     if not config.APIFY_ENABLED:
@@ -211,6 +269,8 @@ async def on_message(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
         await do_list_creators(send)
     elif intent.name == "refresh":
         await do_refresh(send)
+    elif intent.name == "remix_url" and intent.url:
+        await do_remix_url(intent.url, intent.extra_context, send)
     elif intent.name == "help":
         await send(_help_text())
     elif intent.name == "small_talk":

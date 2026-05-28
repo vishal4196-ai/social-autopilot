@@ -48,6 +48,9 @@ APIFY_X_ACTOR = _env("APIFY_X_ACTOR", "apidojo/twitter-scraper-lite")
 # Per-creator scrapers (different actors, profile-based input):
 APIFY_LINKEDIN_CREATOR_ACTOR = _env("APIFY_LINKEDIN_CREATOR_ACTOR", "apimaestro/linkedin-profile-posts")
 APIFY_X_CREATOR_ACTOR = _env("APIFY_X_CREATOR_ACTOR", "apidojo/twitter-user-scraper")
+# Single-post-by-URL scrapers (for the "paste a URL to remix" flow):
+APIFY_LINKEDIN_POST_ACTOR = _env("APIFY_LINKEDIN_POST_ACTOR", "apimaestro/linkedin-post-detail")
+APIFY_X_POST_ACTOR = _env("APIFY_X_POST_ACTOR", "apidojo/twitter-scraper-lite")
 
 # Schedule
 POST_TIMES = [t.strip() for t in _env("POST_TIMES", "09:00,13:00,18:00").split(",") if t.strip()]
