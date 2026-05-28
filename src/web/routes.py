@@ -62,7 +62,7 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
     async def get_login(request: Request, msg: str = ""):
         if auth.is_authed(request):
             return RedirectResponse(url="/", status_code=303)
-        return templates.TemplateResponse("login.html", {"request": request, "msg": msg})
+        return templates.TemplateResponse(request, "login.html", {"msg": msg})
 
     @app.post("/login/request", response_class=HTMLResponse)
     async def post_login_request(request: Request):
@@ -72,8 +72,9 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
         base = f"{scheme}://{host}"
         ok, msg = await auth.send_login_link(base)
         return templates.TemplateResponse(
+            request,
             "login.html",
-            {"request": request, "msg": msg, "msg_ok": ok},
+            {"msg": msg, "msg_ok": ok},
         )
 
     @app.get("/login/verify")
@@ -104,9 +105,9 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
         posts = db.recent_posts(limit=5)
         creators_count = len(db.list_creators())
         return templates.TemplateResponse(
+            request,
             "dashboard.html",
             {
-                "request": request,
                 "page": "dashboard",
                 "queued_count": len(ideas),
                 "posts_count": len(db.recent_posts(limit=1000)),
@@ -128,8 +129,9 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
             return r
         ideas = db.list_queued(limit=200)
         return templates.TemplateResponse(
+            request,
             "queue.html",
-            {"request": request, "page": "queue", "ideas": ideas, "_t": _truncate},
+            {"page": "queue", "ideas": ideas, "_t": _truncate},
         )
 
     @app.post("/queue/add")
@@ -156,8 +158,9 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
             return r
         posts = db.recent_posts(limit=50)
         return templates.TemplateResponse(
+            request,
             "posts.html",
-            {"request": request, "page": "posts", "posts": posts, "_t": _truncate},
+            {"page": "posts", "posts": posts, "_t": _truncate},
         )
 
     # ─── Creators ─────────────────────────────────────────
@@ -168,8 +171,9 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
             return r
         creators = db.list_creators()
         return templates.TemplateResponse(
+            request,
             "creators.html",
-            {"request": request, "page": "creators", "creators": creators},
+            {"page": "creators", "creators": creators},
         )
 
     @app.post("/creators/add")
@@ -203,8 +207,9 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
         if r := _require_auth(request):
             return r
         return templates.TemplateResponse(
+            request,
             "compose.html",
-            {"request": request, "page": "compose", "draft": None, "idea_text": ""},
+            {"page": "compose", "draft": None, "idea_text": ""},
         )
 
     @app.post("/compose/draft", response_class=HTMLResponse)
@@ -225,9 +230,9 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
         except Exception as e:
             log.exception("compose draft failed")
             return templates.TemplateResponse(
+                request,
                 "compose.html",
                 {
-                    "request": request,
                     "page": "compose",
                     "draft": None,
                     "idea_text": idea,
@@ -237,9 +242,9 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
 
         draft = {v.platform: v for v in variants}
         return templates.TemplateResponse(
+            request,
             "compose.html",
             {
-                "request": request,
                 "page": "compose",
                 "draft": draft,
                 "idea_text": idea,
@@ -296,9 +301,9 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
             db.mark_idea_used(idea_id)
 
         return templates.TemplateResponse(
+            request,
             "compose.html",
             {
-                "request": request,
                 "page": "compose",
                 "draft": None,
                 "idea_text": "",
@@ -363,9 +368,9 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
             "DB path": config.DB_PATH,
         }
         return templates.TemplateResponse(
+            request,
             "settings.html",
             {
-                "request": request,
                 "page": "settings",
                 "env": env_summary,
                 "brand": config.BRAND_CONFIG,
