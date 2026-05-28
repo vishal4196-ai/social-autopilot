@@ -37,6 +37,7 @@ INTENTS:
 - follow: Start tracking a creator's posts as remix inspiration. MUST extract platform (linkedin or x) and handle. Examples: "follow justin welsh on linkedin", "track @greg_isenberg on x", "add @naval to twitter", "start watching alex hormozi on linkedin"
 - unfollow: Stop tracking a creator. MUST extract platform and handle. Examples: "unfollow @greg_isenberg", "stop tracking justin welsh on linkedin", "remove naval from x"
 - creators: List tracked creators. Examples: "who do you follow", "show creators", "list tracked", "which creators are we watching"
+- refresh: Manually trigger a viral/creator scrape right now (don't wait for the morning cron). Examples: "refresh creators", "scrape now", "pull fresh posts", "update inspiration", "refresh"
 - help: Show help. Examples: "help", "what can you do", "commands", "how does this work"
 - idea: A NEW content idea to queue. This is the DEFAULT — anything that sounds like a topic, story, lesson, client win, hot take, observation, or note about their business or audience.
 - small_talk: Pure conversational with no action needed. Examples: "thanks", "cool", "ok", "got it", "nice", "👍"
@@ -68,7 +69,7 @@ class Intent:
 
 _VALID = {
     "idea", "post_now", "list", "recent", "status", "skip",
-    "follow", "unfollow", "creators", "help", "small_talk",
+    "follow", "unfollow", "creators", "refresh", "help", "small_talk",
 }
 
 
@@ -98,6 +99,8 @@ def classify(text: str) -> Intent:
             return Intent("status")
         if cmd in {"creators", "following"}:
             return Intent("creators")
+        if cmd in {"refresh", "scrape"}:
+            return Intent("refresh")
         if cmd in {"help", "start"}:
             return Intent("help")
         if cmd == "skip":

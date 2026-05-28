@@ -133,6 +133,30 @@ async def do_list_creators(send) -> None:
     await send("Tracked creators:" + "\n".join(lines))
 
 
+async def do_refresh(send) -> None:
+    """Trigger an Apify discovery run on demand (creators + viral keywords)."""
+    if not config.APIFY_ENABLED:
+        await send(
+            "Apify is off — set APIFY_ENABLED=true and APIFY_TOKEN in Railway "
+            "to enable scraping."
+        )
+        return
+    from .content import viral_discovery
+    await send("🔄 scraping creators + viral keywords (10-60 sec)…")
+    loop = asyncio.get_running_loop()
+    try:
+        result = await loop.run_in_executor(None, viral_discovery.refresh)
+        await send(
+            f"✓ done.\n"
+            f"  trending LI: {result['linkedin_trending']}\n"
+            f"  trending X: {result['x_trending']}\n"
+            f"  creator posts: {result['creator_posts']}"
+        )
+    except Exception as e:
+        log.exception("refresh failed")
+        await send(f"✗ refresh failed: {str(e)[:400]}")
+
+
 async def do_post_now(send) -> None:
     # Lazy import to avoid any chance of a circular import via main.py.
     from .scheduler import run_post_cycle
@@ -185,6 +209,8 @@ async def on_message(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
         await do_unfollow(intent.platform, intent.handle, send)
     elif intent.name == "creators":
         await do_list_creators(send)
+    elif intent.name == "refresh":
+        await do_refresh(send)
     elif intent.name == "help":
         await send(_help_text())
     elif intent.name == "small_talk":
