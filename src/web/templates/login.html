@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Login · Vishal AI{% endblock %}
+{% block content %}
+<div class="login-shell">
+  <div class="login-card">
+    <h1 class="brand-xl">VISHAL<span class="dot">.</span>AI</h1>
+    <p class="muted">Your content autopilot. Login link arrives in Telegram.</p>
+
+    {% if msg %}
+      <div class="banner {% if msg_ok %}ok{% else %}warn{% endif %}">{{ msg }}</div>
+    {% endif %}
+
+    <form method="post" action="/login/request" class="stack">
+      <button type="submit" class="btn primary big">📨 Send me a login link in Telegram</button>
+    </form>
+
+    <p class="muted small">
+      The bot will DM you a one-time link to <strong>@Codepaper_autopilot_bot</strong>.
+      Link expires in 10 minutes.
+    </p>
+  </div>
+</div>
+{% endblock %}

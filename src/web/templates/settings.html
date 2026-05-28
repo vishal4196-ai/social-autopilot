@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Settings · Vishal AI{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+
+<h2>System</h2>
+<table class="kv">
+  {% for k, v in env.items() %}
+    <tr><th>{{ k }}</th><td>{{ v }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Brand voice (from <code>config.yaml</code>)</h2>
+<table class="kv">
+  <tr><th>Brand</th><td>{{ brand.brand.name }}</td></tr>
+  <tr><th>Owner</th><td>{{ brand.brand.owner }}</td></tr>
+  <tr><th>One-liner</th><td>{{ brand.brand.one_liner }}</td></tr>
+  <tr><th>Offers</th><td><ul>{% for o in brand.brand.offers %}<li>{{ o }}</li>{% endfor %}</ul></td></tr>
+  <tr><th>Audience</th><td>{{ brand.audience.primary }}</td></tr>
+  <tr><th>Pain points</th><td><ul>{% for p in brand.audience.pain_points %}<li>{{ p }}</li>{% endfor %}</ul></td></tr>
+  <tr><th>Voice</th><td><ul>{% for v in brand.voice %}<li>{{ v }}</li>{% endfor %}</ul></td></tr>
+</table>
+
+<p class="muted small">
+  Editing the brand voice still requires changing <code>config.yaml</code> in the repo and pushing.
+  Live editing via web is a planned upgrade.
+</p>
+{% endblock %}

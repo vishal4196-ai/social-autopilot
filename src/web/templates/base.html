@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0a">
+  <title>{% block title %}Vishal AI{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+</head>
+<body>
+  {% if request.session.get('authed') %}
+  <nav class="topnav">
+    <a href="/" class="brand">VISHAL<span class="dot">.</span>AI</a>
+    <button class="hamburger" aria-label="menu" onclick="document.querySelector('.menu').classList.toggle('open')">≡</button>
+    <ul class="menu">
+      <li><a href="/" class="{% if page == 'dashboard' %}active{% endif %}">Dashboard</a></li>
+      <li><a href="/queue" class="{% if page == 'queue' %}active{% endif %}">Queue</a></li>
+      <li><a href="/compose" class="{% if page == 'compose' %}active{% endif %}">Compose</a></li>
+      <li><a href="/posts" class="{% if page == 'posts' %}active{% endif %}">Posts</a></li>
+      <li><a href="/creators" class="{% if page == 'creators' %}active{% endif %}">Creators</a></li>
+      <li><a href="/settings" class="{% if page == 'settings' %}active{% endif %}">Settings</a></li>
+      <li><a href="/logout" class="logout">Logout</a></li>
+    </ul>
+  </nav>
+  {% endif %}
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

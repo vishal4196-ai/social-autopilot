@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Compose · Vishal AI{% endblock %}
+{% block content %}
+<h1>Compose</h1>
+
+{% if published %}
+  {# Outcome screen #}
+  <div class="banner ok">
+    {% if mode_used == 'now' %}Published now.{% else %}Scheduled for {{ scheduled_for_label }}.{% endif %}
+  </div>
+  <ul class="post-list">
+    {% for platform, ok, err in published %}
+      <li class="post-row">
+        <div class="post-meta">
+          <span class="badge badge-{{ platform }}">{{ platform }}</span>
+          {% if ok %}<span class="badge ok-text">sent</span>{% else %}<span class="badge warn-text">failed</span>{% endif %}
+        </div>
+        {% if err %}<div class="error-detail">{{ err }}</div>{% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+  <a href="/compose" class="btn primary">Compose another</a>
+
+{% elif draft %}
+  {# Preview/edit screen #}
+  <h2>Preview & edit</h2>
+  <p class="muted">Tweak the text, then publish or add to queue.</p>
+
+  <form method="post" action="/compose/publish" class="compose-form">
+    <input type="hidden" name="idea" value="{{ idea_text }}">
+
+    {% if draft.linkedin %}
+    <div class="variant">
+      <div class="variant-head">
+        <span class="badge badge-linkedin">LinkedIn</span>
+        {% if draft.linkedin.included_cta %}<span class="badge badge-cta">CTA included</span>{% endif %}
+        <span class="muted small">{{ draft.linkedin.text | length }} chars</span>
+      </div>
+      <textarea name="linkedin_text" rows="14">{{ draft.linkedin.text }}</textarea>
+    </div>
+    {% endif %}
+
+    {% if draft.x %}
+    <div class="variant">
+      <div class="variant-head">
+        <span class="badge badge-x">X / Twitter</span>
+        {% if draft.x.included_cta %}<span class="badge badge-cta">CTA included</span>{% endif %}
+        <span class="muted small">{{ draft.x.text | length }} chars</span>
+      </div>
+      <textarea name="x_text" rows="5">{{ draft.x.text }}</textarea>
+    </div>
+    {% endif %}
+
+    <div class="radio-row">
+      <label><input type="radio" name="mode" value="schedule" checked> Schedule for next slot</label>
+      <label><input type="radio" name="mode" value="now"> Publish now</label>
+    </div>
+
+    <div class="actions-row">
+      <button type="submit" class="btn primary">📤 Publish</button>
+    </div>
+  </form>
+
+  <form method="post" action="/compose/draft" class="inline">
+    <input type="hidden" name="idea" value="{{ idea_text }}">
+    <button class="btn">🔁 Regenerate</button>
+  </form>
+
+  <form method="post" action="/compose/queue" class="inline">
+    <input type="hidden" name="idea" value="{{ idea_text }}">
+    <button class="btn ghost">📥 Add idea to queue instead</button>
+  </form>
+
+  <a href="/compose" class="btn ghost">✕ Cancel</a>
+
+{% else %}
+  {# Initial idea-entry screen #}
+  {% if error %}<div class="banner warn">{{ error }}</div>{% endif %}
+  <form method="post" action="/compose/draft" class="compose-form">
+    <label class="muted small">What do you want to post about?</label>
+    <textarea name="idea" rows="6" autofocus placeholder="A client win. A hot take. A lesson. A short observation. The agent reads creators you follow + viral trends and writes our take.">{{ idea_text }}</textarea>
+    <button type="submit" class="btn primary big">✍ Draft LinkedIn + X</button>
+  </form>
+  <p class="muted small">
+    Tip: paste a LinkedIn or X post URL to remix that creator's hook into our niche.
+    (URL goes through the Telegram bot — paste it there for the full remix flow.)
+  </p>
+{% endif %}
+{% endblock %}

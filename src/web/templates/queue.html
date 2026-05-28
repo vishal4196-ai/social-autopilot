@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Queue · Vishal AI{% endblock %}
+{% block content %}
+<h1>Queue</h1>
+
+<form method="post" action="/queue/add" class="add-form">
+  <textarea name="text" rows="3" placeholder="Drop a thought, story, client win, or hot take. The agent will turn it into a post."></textarea>
+  <button class="btn primary">Add to queue</button>
+</form>
+
+<h2>{{ ideas | length }} queued</h2>
+
+{% if ideas %}
+  <ul class="queue-list">
+    {% for i in ideas %}
+      <li class="queue-row">
+        <div class="queue-meta">
+          <span class="idea-id">#{{ i.id }}</span>
+          <span class="muted small">{{ i.source }} · {{ i.created_at[:16].replace('T', ' ') }}</span>
+        </div>
+        <div class="queue-text">{{ _t(i.text, 500) }}</div>
+        <form method="post" action="/queue/{{ i.id }}/skip" class="inline">
+          <button class="btn small ghost">Skip</button>
+        </form>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="muted">Queue empty. Add an idea above, or text the bot in Telegram.</p>
+{% endif %}
+{% endblock %}

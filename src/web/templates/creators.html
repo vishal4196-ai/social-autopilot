@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Creators · Vishal AI{% endblock %}
+{% block content %}
+<h1>Creators</h1>
+<p class="muted">Voices the agent studies for remix inspiration. Scraped daily (or on Refresh) when Apify is on.</p>
+
+<form method="post" action="/creators/add" class="add-form row">
+  <select name="platform" required>
+    <option value="linkedin">LinkedIn</option>
+    <option value="x">X (Twitter)</option>
+  </select>
+  <input type="text" name="handle" placeholder="handle (e.g. justin-welsh or naval, no @)" required>
+  <button class="btn primary">Follow</button>
+</form>
+
+<form method="post" action="/actions/refresh" class="inline">
+  <button class="btn small">🔄 Refresh now</button>
+</form>
+
+<h2>{{ creators | length }} tracked</h2>
+
+{% if creators %}
+  <ul class="creator-list">
+    {% for c in creators %}
+      <li class="creator-row">
+        <div class="creator-meta">
+          <span class="badge badge-{{ c.platform }}">{{ c.platform }}</span>
+          <span class="handle">@{{ c.handle }}</span>
+          <span class="muted small">
+            {% if c.last_scraped_at %}last scraped {{ c.last_scraped_at[:10] }}{% else %}never scraped{% endif %}
+          </span>
+        </div>
+        <form method="post" action="/creators/{{ c.id }}/remove" class="inline">
+          <button class="btn small ghost">Unfollow</button>
+        </form>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="muted">Not tracking anyone yet.</p>
+{% endif %}
+{% endblock %}

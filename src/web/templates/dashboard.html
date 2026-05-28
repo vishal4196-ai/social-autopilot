@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Vishal AI{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+
+<div class="grid">
+  <div class="stat">
+    <div class="stat-num">{{ queued_count }}</div>
+    <div class="stat-label">queued ideas</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num">{{ posts_count }}</div>
+    <div class="stat-label">posts logged</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num">{{ creators_count }}</div>
+    <div class="stat-label">creators tracked</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num small">{{ next_slot }}</div>
+    <div class="stat-label">next slot</div>
+  </div>
+</div>
+
+<div class="actions-row">
+  <form method="post" action="/actions/post_now">
+    <button class="btn primary">🚀 Post now</button>
+  </form>
+  <form method="post" action="/actions/refresh">
+    <button class="btn">🔄 Refresh discovery</button>
+  </form>
+  <a class="btn" href="/compose">✍ Compose</a>
+</div>
+
+<h2>Recent posts</h2>
+{% if recent_posts %}
+  <ul class="post-list">
+    {% for p in recent_posts %}
+      <li class="post-row">
+        <div class="post-meta">
+          <span class="badge badge-{{ p.platform }}">{{ p.platform }}</span>
+          <span class="badge badge-status">{{ p.status }}</span>
+          <span class="muted small">{{ p.created_at[:16].replace('T', ' ') }}</span>
+        </div>
+        <div class="post-text">{{ _t(p.text, 240) }}</div>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="muted">Nothing posted yet. Hit "Post now" or wait for the next scheduled slot ({{ next_slot }}).</p>
+{% endif %}
+
+<h2>Schedule</h2>
+<p class="muted">{{ post_times | join(' · ') }} {{ timezone }} · Apify discovery {% if apify_on %}<span class="ok-text">ON</span>{% else %}<span class="warn-text">OFF</span>{% endif %}</p>
+{% endblock %}

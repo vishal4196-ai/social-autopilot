@@ -56,6 +56,13 @@ APIFY_X_POST_ACTOR = _env("APIFY_X_POST_ACTOR", "apidojo/twitter-scraper-lite")
 POST_TIMES = [t.strip() for t in _env("POST_TIMES", "09:00,13:00,18:00").split(",") if t.strip()]
 TIMEZONE = _env("TIMEZONE", "America/Toronto")
 
+# Web server
+PORT = int(_env("PORT", "8080"))
+WEB_SESSION_SECRET = _env(
+    "WEB_SESSION_SECRET",
+    "change-me-set-a-long-random-string-in-env",
+)
+
 # Storage
 DB_PATH = _env("DB_PATH", str(ROOT / "autopilot.db"))
 

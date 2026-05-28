@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Posts · Vishal AI{% endblock %}
+{% block content %}
+<h1>Posts</h1>
+<p class="muted">Last 50 published or attempted.</p>
+
+{% if posts %}
+  <ul class="post-list">
+    {% for p in posts %}
+      <li class="post-row">
+        <div class="post-meta">
+          <span class="badge badge-{{ p.platform }}">{{ p.platform }}</span>
+          <span class="badge badge-status status-{{ p.status }}">{{ p.status }}</span>
+          {% if p.cta_url %}<span class="badge badge-cta">CTA</span>{% endif %}
+          <span class="muted small">{{ p.created_at[:16].replace('T', ' ') }}</span>
+        </div>
+        <pre class="post-text-full">{{ p.text }}</pre>
+        {% if p.error %}<div class="error-detail">⚠ {{ p.error }}</div>{% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="muted">No posts yet.</p>
+{% endif %}
+{% endblock %}
