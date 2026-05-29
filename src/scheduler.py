@@ -108,6 +108,17 @@ def run_viral_refresh() -> None:
         log.exception("Viral refresh failed: %s", e)
 
 
+def run_research() -> None:
+    """Daily research pipeline: scout → ideate → queue killer ideas."""
+    try:
+        from .agents import orchestrator
+        # Signal refresh happens inside the scheduled viral_refresh; don't double it.
+        summary = orchestrator.run_research_pipeline(refresh_signal=False)
+        log.info("Research pipeline: %s", summary)
+    except Exception as e:
+        log.exception("Research pipeline failed: %s", e)
+
+
 def build_scheduler() -> AsyncIOScheduler:
     tz = ZoneInfo(config.TIMEZONE)
     sched = AsyncIOScheduler(timezone=tz)
@@ -136,5 +147,17 @@ def build_scheduler() -> AsyncIOScheduler:
             misfire_grace_time=1800,
         )
         log.info("Scheduled viral refresh at %02d:%s %s", refresh_hh, first_mm, config.TIMEZONE)
+
+    # Research pipeline once a day (scout → ideate → queue ideas)
+    if config.RESEARCH_TIME:
+        r_hh, r_mm = config.RESEARCH_TIME.split(":")
+        sched.add_job(
+            run_research,
+            CronTrigger(hour=int(r_hh), minute=int(r_mm), timezone=tz),
+            id="research_pipeline",
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
+        log.info("Scheduled research pipeline at %s %s", config.RESEARCH_TIME, config.TIMEZONE)
 
     return sched

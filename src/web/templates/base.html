@@ -15,6 +15,7 @@
     <button class="hamburger" aria-label="menu" onclick="document.querySelector('.menu').classList.toggle('open')">≡</button>
     <ul class="menu">
       <li><a href="/" class="{% if page == 'dashboard' %}active{% endif %}">Dashboard</a></li>
+      <li><a href="/research" class="{% if page == 'research' %}active{% endif %}">Research</a></li>
       <li><a href="/queue" class="{% if page == 'queue' %}active{% endif %}">Queue</a></li>
       <li><a href="/compose" class="{% if page == 'compose' %}active{% endif %}">Compose</a></li>
       <li><a href="/posts" class="{% if page == 'posts' %}active{% endif %}">Posts</a></li>

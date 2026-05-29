@@ -41,6 +41,8 @@ def _help_text() -> str:
         "• \"who do you follow?\" → list tracked\n"
         "• \"unfollow @greg_isenberg\" → stop tracking\n"
         "• \"refresh\" → scrape now (don't wait for morning cron)\n\n"
+        "🔬 Research\n"
+        "• \"research\" or \"find me ideas\" → research agent scouts the niche + queues fresh killer ideas\n\n"
         "🔗 Paste a post URL → I read it and queue a remix\n"
         "  Just send the LinkedIn or X URL (with optional note: \"this hook is fire — remix it\")\n\n"
         "⚙ \"status\" → system check"
@@ -215,6 +217,33 @@ async def do_refresh(send) -> None:
         await send(f"✗ refresh failed: {str(e)[:400]}")
 
 
+async def do_research(send) -> None:
+    """Run the research pipeline now and report the brief + queued ideas."""
+    await send("🔬 research agent working — scouting the niche + drafting ideas (20-60 sec)…")
+    from .agents import orchestrator
+    loop = asyncio.get_running_loop()
+    try:
+        summary = await loop.run_in_executor(
+            None, lambda: orchestrator.run_research_pipeline(refresh_signal=True)
+        )
+    except Exception as e:
+        log.exception("research failed")
+        await send(f"✗ research failed: {str(e)[:400]}")
+        return
+
+    lines = [f"🧠 {summary['brief_summary']}", ""]
+    if summary.get("themes"):
+        lines.append("Hot themes:")
+        lines += [f"• {t}" for t in summary["themes"]]
+        lines.append("")
+    lines.append(f"Queued {summary['ideas_queued']} of {summary['ideas_generated']} ideas:")
+    for i in summary.get("top_ideas", []):
+        lines.append(f"  [{i['score']}] {i['hook']}")
+    lines.append("")
+    lines.append("Say \"post now\" to fire the top one, or review them in the web app.")
+    await send("\n".join(lines))
+
+
 async def do_post_now(send) -> None:
     # Lazy import to avoid any chance of a circular import via main.py.
     from .scheduler import run_post_cycle
@@ -269,6 +298,8 @@ async def on_message(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
         await do_list_creators(send)
     elif intent.name == "refresh":
         await do_refresh(send)
+    elif intent.name == "research":
+        await do_research(send)
     elif intent.name == "remix_url" and intent.url:
         await do_remix_url(intent.url, intent.extra_context, send)
     elif intent.name == "help":

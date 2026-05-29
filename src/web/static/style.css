@@ -326,6 +326,36 @@ textarea:focus, input:focus, select:focus {
 .picon { border-radius: 3px; flex-shrink: 0; vertical-align: middle; }
 .picon-text { font-size: 10px; color: var(--muted); }
 
+/* ── Research ────────────────────────────────────────── */
+.brief-summary {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin: 14px 0;
+  font-size: 15px;
+  line-height: 1.55;
+}
+.brief-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin: 14px 0;
+}
+@media (min-width: 700px) { .brief-grid { grid-template-columns: 1fr 1fr; } }
+.brief-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.brief-card h3 { margin: 0 0 8px; font-size: 14px; }
+.brief-card ul { margin: 0; padding-left: 18px; }
+.brief-card li { margin-bottom: 6px; font-size: 13px; line-height: 1.45; color: var(--text); }
+.score-badge { background: rgba(204,0,0,0.18); color: var(--accent-hi); border-color: rgba(204,0,0,0.4); font-weight: 700; }
+.idea-card { border-left: 3px solid var(--accent); }
+
 /* ── Settings table ──────────────────────────────────── */
 .kv { width: 100%; border-collapse: collapse; margin: 12px 0 24px; }
 .kv th, .kv td {

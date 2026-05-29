@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Research · Vishal AI{% endblock %}
+{% block content %}
+<div class="cal-header">
+  <h1>Research</h1>
+  <form method="post" action="/research/run">
+    <button class="btn primary">🔬 Run research now</button>
+  </form>
+</div>
+<p class="muted small">
+  The research agent scouts viral posts, your tracked creators, and live web
+  trends, then drafts scored post ideas. Runs automatically every day at
+  {{ research_time }} {{ timezone }}.
+</p>
+
+{% if brief %}
+  <div class="brief-summary">{{ brief.summary }}</div>
+
+  <div class="brief-grid">
+    {% if brief.themes %}
+    <div class="brief-card">
+      <h3>🔥 Hot themes</h3>
+      <ul>{% for t in brief.themes %}<li>{{ t }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+    {% if brief.hooks %}
+    <div class="brief-card">
+      <h3>🪝 Hooks working</h3>
+      <ul>{% for h in brief.hooks %}<li>{{ h }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+    {% if brief.gaps %}
+    <div class="brief-card">
+      <h3>🎯 Gaps to own</h3>
+      <ul>{% for g in brief.gaps %}<li>{{ g }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+    {% if brief.questions %}
+    <div class="brief-card">
+      <h3>❓ Audience asking</h3>
+      <ul>{% for q in brief.questions %}<li>{{ q }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+  </div>
+  <p class="muted small">Brief generated {{ brief.created_at[:16].replace('T', ' ') }} UTC.</p>
+{% else %}
+  <div class="banner">No research brief yet. Hit "Run research now" to generate the first one.</div>
+{% endif %}
+
+<h2>Agent-generated ideas in queue</h2>
+{% if agent_ideas %}
+  <ul class="queue-list">
+    {% for i in agent_ideas %}
+      <li class="queue-row idea-card">
+        <div class="queue-meta">
+          <span class="idea-id">#{{ i.id }}</span>
+          {% if i.score %}<span class="badge score-badge">{{ i.score }}</span>{% endif %}
+          {% if i.meta_obj and i.meta_obj.format %}<span class="badge">{{ i.meta_obj.format }}</span>{% endif %}
+          {% if i.meta_obj and i.meta_obj.platform_fit %}<span class="badge">{{ i.meta_obj.platform_fit }}</span>{% endif %}
+        </div>
+        {% if i.meta_obj and i.meta_obj.hook %}
+          <div class="queue-text"><strong>{{ i.meta_obj.hook }}</strong></div>
+          <div class="muted small">{{ i.meta_obj.why }} — hits: {{ i.meta_obj.pain_point }}</div>
+        {% else %}
+          <div class="queue-text">{{ i.text[:300] }}</div>
+        {% endif %}
+        <form method="post" action="/queue/{{ i.id }}/skip" class="inline">
+          <button class="btn small ghost">Skip</button>
+        </form>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="muted">No agent-generated ideas in the queue right now.</p>
+{% endif %}
+{% endblock %}

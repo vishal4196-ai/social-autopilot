@@ -443,6 +443,57 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
             log.exception("refresh failed")
         return RedirectResponse(url="/creators", status_code=303)
 
+    # ─── Research ─────────────────────────────────────────
+
+    @app.get("/research", response_class=HTMLResponse)
+    async def research_get(request: Request):
+        if r := _require_auth(request):
+            return r
+        import json as _json
+        brief = db.latest_research_brief()
+        # Agent-generated queued ideas, with parsed meta for display
+        agent_ideas = []
+        for row in db.list_queued(limit=200):
+            if row["source"] != "research_agent":
+                continue
+            meta_obj = {}
+            try:
+                meta_obj = _json.loads(row["meta"]) if row["meta"] else {}
+            except (ValueError, TypeError):
+                pass
+            agent_ideas.append({
+                "id": row["id"],
+                "text": row["text"],
+                "score": row["score"],
+                "meta_obj": meta_obj,
+            })
+        agent_ideas.sort(key=lambda i: (i["score"] or 0), reverse=True)
+        return templates.TemplateResponse(
+            request,
+            "research.html",
+            {
+                "page": "research",
+                "brief": brief,
+                "agent_ideas": agent_ideas,
+                "research_time": config.RESEARCH_TIME,
+                "timezone": config.TIMEZONE,
+            },
+        )
+
+    @app.post("/research/run")
+    async def research_run(request: Request):
+        if r := _require_auth(request):
+            return r
+        from ..agents import orchestrator
+        loop = asyncio.get_running_loop()
+        try:
+            await loop.run_in_executor(
+                None, lambda: orchestrator.run_research_pipeline(refresh_signal=True)
+            )
+        except Exception:
+            log.exception("research run failed")
+        return RedirectResponse(url="/research", status_code=303)
+
     # ─── Settings ─────────────────────────────────────────
 
     @app.get("/settings", response_class=HTMLResponse)

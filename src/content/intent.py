@@ -38,6 +38,7 @@ INTENTS:
 - unfollow: Stop tracking a creator. MUST extract platform and handle. Examples: "unfollow @greg_isenberg", "stop tracking justin welsh on linkedin", "remove naval from x"
 - creators: List tracked creators. Examples: "who do you follow", "show creators", "list tracked", "which creators are we watching"
 - refresh: Manually trigger a viral/creator scrape right now (don't wait for the morning cron). Examples: "refresh creators", "scrape now", "pull fresh posts", "update inspiration", "refresh"
+- research: Run the research agent now — scout the niche + generate fresh killer post ideas into the queue. Examples: "research", "find me ideas", "give me ideas", "what should I post", "run research", "brainstorm", "come up with ideas"
 - help: Show help. Examples: "help", "what can you do", "commands", "how does this work"
 - idea: A NEW content idea to queue. This is the DEFAULT — anything that sounds like a topic, story, lesson, client win, hot take, observation, or note about their business or audience.
 - small_talk: Pure conversational with no action needed. Examples: "thanks", "cool", "ok", "got it", "nice", "👍"
@@ -72,7 +73,7 @@ class Intent:
 _VALID = {
     "idea", "post_now", "list", "recent", "status", "skip",
     "follow", "unfollow", "creators", "refresh", "remix_url",
-    "help", "small_talk",
+    "research", "help", "small_talk",
 }
 
 
@@ -113,6 +114,8 @@ def classify(text: str) -> Intent:
             return Intent("creators")
         if cmd in {"refresh", "scrape"}:
             return Intent("refresh")
+        if cmd in {"research", "ideas", "brainstorm"}:
+            return Intent("research")
         if cmd in {"help", "start"}:
             return Intent("help")
         if cmd == "skip":

@@ -56,6 +56,13 @@ APIFY_X_POST_ACTOR = _env("APIFY_X_POST_ACTOR", "apidojo/twitter-scraper-lite")
 POST_TIMES = [t.strip() for t in _env("POST_TIMES", "09:00,13:00,18:00").split(",") if t.strip()]
 TIMEZONE = _env("TIMEZONE", "America/Toronto")
 
+# Research agent
+RESEARCH_MODEL = _env("RESEARCH_MODEL", CLAUDE_MODEL)
+RESEARCH_TIME = _env("RESEARCH_TIME", "06:00")          # daily research run (in TIMEZONE)
+IDEAS_PER_RUN = int(_env("IDEAS_PER_RUN", "10"))         # how many ideas the ideator drafts
+IDEAS_TO_QUEUE = int(_env("IDEAS_TO_QUEUE", "4"))        # top-N auto-queued each run
+ENABLE_WEB_SEARCH = _bool("ENABLE_WEB_SEARCH", True)     # let research agent web-search trends
+
 # Web server
 PORT = int(_env("PORT", "8080"))
 WEB_SESSION_SECRET = _env(
