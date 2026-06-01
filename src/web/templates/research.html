@@ -13,6 +13,13 @@
   {{ research_time }} {{ timezone }}.
 </p>
 
+{% if err %}
+  <div class="banner warn">
+    <strong>Research run failed:</strong>
+    <pre style="white-space: pre-wrap; font-size: 12px; margin: 6px 0 0;">{{ err }}</pre>
+  </div>
+{% endif %}
+
 {% if brief %}
   <div class="brief-summary">{{ brief.summary }}</div>
 

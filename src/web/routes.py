@@ -446,7 +446,7 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
     # ─── Research ─────────────────────────────────────────
 
     @app.get("/research", response_class=HTMLResponse)
-    async def research_get(request: Request):
+    async def research_get(request: Request, err: str = ""):
         if r := _require_auth(request):
             return r
         import json as _json
@@ -477,6 +477,7 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
                 "agent_ideas": agent_ideas,
                 "research_time": config.RESEARCH_TIME,
                 "timezone": config.TIMEZONE,
+                "err": err,
             },
         )
 
@@ -490,8 +491,15 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
             await loop.run_in_executor(
                 None, lambda: orchestrator.run_research_pipeline(refresh_signal=True)
             )
-        except Exception:
+        except Exception as e:
             log.exception("research run failed")
+            # Surface the error so we can see it in the UI / via curl.
+            import urllib.parse, traceback
+            tb = traceback.format_exc()[-1500:]
+            return RedirectResponse(
+                url=f"/research?err={urllib.parse.quote(tb)}",
+                status_code=303,
+            )
         return RedirectResponse(url="/research", status_code=303)
 
     # ─── Settings ─────────────────────────────────────────
