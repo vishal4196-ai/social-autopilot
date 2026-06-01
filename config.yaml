@@ -2,45 +2,73 @@ brand:
   name: UpliftAI.co
   owner: Vishal Patel
   one_liner: >
-    UpliftAI.co — I build AI automation systems (voice agents, chat agents,
-    GHL/n8n workflows) for service businesses so they stop drowning in ops.
-  # The single sentence Claude should be able to derive from any post:
+    UpliftAI.co — SEO and AI search growth on autopilot. We get local service
+    businesses 3-5 new customers a month from Google AND ChatGPT, without them
+    touching a keyboard.
+  # The single canonical sentence the model can derive from any post.
   positioning: >
-    Vishal runs UpliftAI.co. He ships custom AI systems — voice agents that
-    answer calls 24/7, chat agents that qualify leads, GHL automations that
-    follow up instantly — for agencies, coaches, and service businesses.
+    Vishal runs UpliftAI.co. He runs an autopilot SEO engine for local service
+    businesses (landscaping, cleaning, contractors, food service, home
+    services): AI researches the topics, writes 30 SEO-optimized articles a
+    month, auto-publishes them to the client's CMS (WordPress / Shopify /
+    Webflow / Framer), and builds the entity + backlink signals that rank them
+    on Google AND on ChatGPT/Perplexity. Done-for-you. Outcomes are concrete:
+    +156% local visibility, +40% organic clicks, #1 map pack, 10x ROI baseline.
+
   offers:
-    - AI voice agents (inbound + outbound calls, appointment booking)
-    - Custom AI automations (n8n / Make / GHL workflows)
-    - AI chat agents for websites and WhatsApp
-    - Done-for-you GHL setup + automation
+    - 30 AI-researched, SEO-optimized articles per month (topic ideas, keywords, outlines, FAQs, publish-ready)
+    - Auto-publishing to WordPress / Shopify / Webflow / Framer / custom CMS via API
+    - Ranking on Google AND on ChatGPT / Perplexity / AI Overviews (GEO — generative engine optimization)
+    - Authority backlink building + entity signals
+    - Local SEO (Map Pack + long-tail) for service-area businesses
+    - AI-generated images for articles
 
 audience:
-  primary: Agency owners, coaches, and service-business founders ($500k–$10M revenue)
+  primary: >
+    Owner-operators of local service businesses ($500k–$10M revenue, no in-house
+    SEO team) — landscaping, cleaning, HVAC, plumbing, food service, contractors,
+    home services. They want CUSTOMERS from Google + ChatGPT, not "brand awareness."
   pain_points:
-    - "Spending 4+ hours/day on repetitive ops (lead intake, follow-up, scheduling)"
-    - "Paying VAs $2-4k/mo for work an AI agent can do in 30 seconds"
-    - "Leaking leads because nobody follows up at 9pm on a Saturday"
-    - "Tried ChatGPT but can't connect it to their actual tools"
+    - "Paid $3-5k/mo to an SEO agency for 6 months, got 4 blog posts and no rankings"
+    - "Don't have time to write articles or manage a content calendar"
+    - "Competitors are showing up in ChatGPT/Perplexity answers and they're not — losing visibility on both Google and AI search"
+    - "Heard SEO is 'dead because of AI' from people who don't understand AI search"
+    - "Need 3-5 actual leads from search every month, not impressions"
+    - "Tried ChatGPT to write articles themselves — output ranks for nothing"
 
 voice:
-  - Direct, no fluff, no buzzwords
-  - Specific numbers > vague claims ("saved 14 hrs/wk" not "huge time savings")
-  - First-person, conversational, contractions are fine
-  - One concrete example or story per post
-  - Sound like an operator who ships, not a "thought leader"
+  - Direct, results-focused, conversational
+  - Specific numbers over vague claims ("+156% local visibility in 90 days" not "huge SEO gains")
+  - Simplicity over jargon — "rank on Google and ChatGPT" not "leverage entity-based semantic SEO"
+  - Sound like an operator who ships, not a thought leader
+  - First-person, contractions are fine, one concrete example per post
+
+# Lane = what topics are IN-BOUNDS for posts. The agent must stay here.
+content_lane:
+  - AI-written SEO that actually ranks (not the slop everyone fears)
+  - GEO / generative engine optimization — ranking on ChatGPT, Perplexity, Google AI Overviews
+  - Local SEO for service businesses (Map Pack, long-tail, geo+service combos)
+  - Programmatic / scaled content engines (30+ articles/month, done right)
+  - Why most SEO agencies fail service businesses, and what fixes it
+  - The reality of AI search: keyword research, entity signals, structured data, backlinks
+  - Operator economics: cost per ranked article, cost per lead from organic
+  - Case studies with real verticals (landscaping, dental, HVAC, etc.) and real numbers
 
 viral_discovery:
   linkedin_keywords:
-    - "AI automation agency"
-    - "AI agents"
-    - "n8n automation"
-    - "GoHighLevel automation"
-    - "AI for agencies"
+    - "AI SEO"
+    - "AI search optimization"
+    - "GEO generative engine optimization"
+    - "rank on ChatGPT"
+    - "local SEO 2026"
+    - "programmatic SEO"
+    - "SEO for service businesses"
   x_keywords:
-    - "AI automation"
-    - "AI agents"
-    - "build in public AI"
+    - "AI SEO"
+    - "rank on ChatGPT"
+    - "GEO SEO"
+    - "programmatic SEO"
+    - "local SEO"
   max_samples_per_run: 20
   min_engagement: 100   # likes + comments
   # When scraping a specific creator (follow/unfollow), how many recent posts to pull each time.
