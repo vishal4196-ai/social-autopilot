@@ -1,9 +1,14 @@
 brand:
-  name: Codepaper / UpliftAI.co
+  name: UpliftAI.co
   owner: Vishal Patel
   one_liner: >
-    We build AI automation systems that replace repetitive ops work for
-    service businesses — agencies, coaches, real estate teams, and SMBs.
+    UpliftAI.co — I build AI automation systems (voice agents, chat agents,
+    GHL/n8n workflows) for service businesses so they stop drowning in ops.
+  # The single sentence Claude should be able to derive from any post:
+  positioning: >
+    Vishal runs UpliftAI.co. He ships custom AI systems — voice agents that
+    answer calls 24/7, chat agents that qualify leads, GHL automations that
+    follow up instantly — for agencies, coaches, and service businesses.
   offers:
     - AI voice agents (inbound + outbound calls, appointment booking)
     - Custom AI automations (n8n / Make / GHL workflows)
@@ -23,7 +28,7 @@ voice:
   - Specific numbers > vague claims ("saved 14 hrs/wk" not "huge time savings")
   - First-person, conversational, contractions are fine
   - One concrete example or story per post
-  - End with a question or CTA — never a vague "DM me to learn more"
+  - Sound like an operator who ships, not a "thought leader"
 
 viral_discovery:
   linkedin_keywords:
