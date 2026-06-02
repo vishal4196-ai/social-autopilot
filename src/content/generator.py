@@ -165,10 +165,12 @@ HARD RULES
 - Lead with a SPECIFIC, concrete hook. Number, contradiction, story, or claim.
   Never start with "In today's..." or "As an AI agency...".
 - One emoji max per post, only if it earns its keep. Default: zero.
-- X length: body ≤{int(config.BRAND_CONFIG['generation']['x_target_chars'])} characters
-  (the system reserves ~25 chars for the URL if you include {CTA_TOKEN}).
-- Threads length: body ≤{int(config.BRAND_CONFIG['generation']['threads_target_chars'])} characters
-  (Threads hard-caps at 500 — reserve room for URL).
+- X length: body MUST be ≤{int(config.BRAND_CONFIG['generation']['x_target_chars'])} characters
+  AND must end on a complete sentence (period, question mark, or exclamation
+  mark). If your draft is over budget, REWRITE it shorter, don't trail off
+  with "...". Posts that get cut mid-thought tank engagement.
+- Threads length: body ≤{int(config.BRAND_CONFIG['generation']['threads_target_chars'])} characters,
+  same rule: end on a complete sentence.
 - LinkedIn length: aim for {int(config.BRAND_CONFIG['generation']['linkedin_target_chars'])} chars,
   with line breaks every 1-3 sentences for scannability.
 
@@ -252,6 +254,35 @@ def _strip_em_dashes(text: str) -> str:
     # Collapse any accidental ", ," from double-strips
     text = re.sub(r",\s*,", ",", text)
     return text
+
+
+def _smart_truncate(text: str, limit: int) -> str:
+    """Trim to <=limit chars without cutting mid-word or mid-sentence.
+
+    Strategy (in order of preference):
+      1. Already fits → return unchanged.
+      2. Cut at last sentence terminator (. ! ?) in the back 100 chars
+         of the head — no ellipsis needed, the cut is clean.
+      3. Cut at last word boundary in the back 40 chars + append "…"
+      4. Hard cut at limit-1 + "…" (worst case).
+    """
+    if len(text) <= limit:
+        return text
+    head = text[:limit]
+    # 1. Sentence-end terminators (include the punctuation in the cut)
+    best = -1
+    for term in ('. ', '! ', '? ', '."', '!"', '?"', '.\n', '!\n', '?\n', '\n\n'):
+        idx = head.rfind(term)
+        if idx > best:
+            best = idx + (len(term) - 1)  # keep punctuation, drop the trailing space/newline
+    if best > limit - 100:
+        return text[: best + 1].rstrip()
+    # 2. Word boundary
+    sp = head.rfind(' ')
+    if sp > limit - 40:
+        return text[:sp].rstrip().rstrip(',;:') + '…'
+    # 3. Hard cut
+    return head.rstrip().rstrip(',;:') + '…'
 
 
 # Hard CTA budget: at most 1 in N consecutive cycles may carry a booking link.
@@ -355,23 +386,31 @@ def generate(idea_text: str, *, post_id_hint: str) -> list[GeneratedPost]:
         if has_cta:
             body = body.replace(CTA_TOKEN, cta_url)
 
-        # Length safety net for X (cap 280) and Threads (cap 500).
+        # Length safety net for X (cap 280) and Threads (cap 500) using a
+        # smart truncator that respects sentence + word boundaries.
         if platform_key in ("x", "threads"):
             limit = x_max_body if platform_key == "x" else threads_max_body
-            # Count the URL as ~25 chars (X shortens to t.co; Threads similar).
-            effective_len = len(body) - (len(cta_url) - 25 if cta_url else 0)
-            hard_cap = limit + 25
-            if effective_len > hard_cap:
-                log.warning("%s body %d effective chars > limit %d — truncating",
-                            platform_key, effective_len, hard_cap)
+            # URLs render as ~23 chars on X (t.co). Account for that when
+            # measuring effective length; otherwise we truncate too aggressively.
+            url_real = len(cta_url) if cta_url else 0
+            url_effective = 23 if cta_url else 0
+            effective_len = len(body) - url_real + url_effective
+            if effective_len > limit:
                 if cta_url and cta_url in body:
+                    # Trim the body portion only; leave the URL intact.
                     before, _, after = body.partition(cta_url)
-                    keep = limit - len(after) - 30
-                    if keep > 50:
-                        before = before[:keep].rstrip() + "… "
+                    # How many chars can the "before" block be? Need:
+                    #   len(new_before) + 23 (url) + len(after) <= limit
+                    target_before = limit - url_effective - len(after) - 2
+                    if target_before > 40:
+                        before = _smart_truncate(before, target_before) + " "
                     body = before + cta_url + after
                 else:
-                    body = body[: limit - 1].rstrip() + "…"
+                    body = _smart_truncate(body, limit)
+                log.info(
+                    "%s body smart-truncated: %d -> %d chars",
+                    platform_key, effective_len, len(body) - url_real + url_effective,
+                )
 
         results.append(GeneratedPost(
             platform=platform_key,
