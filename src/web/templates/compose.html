@@ -29,6 +29,29 @@
   <form method="post" action="/compose/publish" class="compose-form">
     <input type="hidden" name="idea" value="{{ idea_text }}">
 
+    {# ── Optional image generation ─────────────────────────── #}
+    <div class="variant image-gen-block">
+      <div class="variant-head">
+        <span class="badge">🖼 Image (optional)</span>
+        <span class="muted small">Generate a branded image, review, then it auto-attaches on Publish</span>
+      </div>
+      <div class="image-controls">
+        <input type="text" name="headline" placeholder="Headline (e.g. 30 articles in month one. +156% local visibility.)">
+        <input type="text" name="subline" placeholder="Sub-line (optional)">
+        <input type="text" name="overline" placeholder="Overline (default: CASE STUDY)">
+        <input type="hidden" name="topic_hint" value="{{ idea_text[:200] }}">
+        <button type="button" class="btn"
+                hx-post="/compose/image"
+                hx-include="closest .image-gen-block input"
+                hx-target="#image-preview-slot" hx-swap="innerHTML"
+                hx-indicator="#image-spinner">
+          🎨 Generate image
+        </button>
+        <span id="image-spinner" class="htmx-indicator muted small"> generating…</span>
+      </div>
+      <div id="image-preview-slot"></div>
+    </div>
+
     {% if draft.linkedin %}
     <div class="variant">
       <div class="variant-head">

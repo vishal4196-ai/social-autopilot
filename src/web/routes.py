@@ -348,6 +348,7 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
         linkedin_text: str = Form(""),
         x_text: str = Form(""),
         threads_text: str = Form(""),
+        image_url: str = Form(""),
         mode: str = Form("schedule"),  # 'now' or 'schedule'
     ):
         if r := _require_auth(request):
@@ -374,7 +375,8 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
                 continue
             try:
                 resp = postsyncer.publish(
-                    platform=platform_key, text=text, schedule_for=schedule_for
+                    platform=platform_key, text=text, schedule_for=schedule_for,
+                    media_urls=[image_url] if image_url.strip() else None,
                 )
                 ps_id = str(resp.get("data", {}).get("id") or resp.get("id") or "")
                 db.log_post(
@@ -421,6 +423,62 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
         if idea:
             db.add_idea(idea, source="web")
         return RedirectResponse(url="/queue", status_code=303)
+
+    # ─── Image generation + serving ───────────────────────
+
+    @app.get("/images/{filename}")
+    async def get_image(filename: str):
+        """Serve a generated post image (Postsyncer fetches via this URL)."""
+        from fastapi.responses import FileResponse
+        from ..content import image_gen
+        # Prevent path traversal
+        if "/" in filename or ".." in filename:
+            return RedirectResponse(url="/", status_code=303)
+        path = image_gen.OUTPUT_DIR / filename
+        if not path.exists():
+            return RedirectResponse(url="/", status_code=303)
+        return FileResponse(str(path), media_type="image/png")
+
+    @app.post("/compose/image", response_class=HTMLResponse)
+    async def compose_image(
+        request: Request,
+        headline: str = Form(...),
+        subline: str = Form(""),
+        overline: str = Form("CASE STUDY"),
+        topic_hint: str = Form(""),
+    ):
+        if r := _require_auth(request):
+            return r
+        from ..content import image_gen
+        loop = asyncio.get_running_loop()
+        try:
+            result = await loop.run_in_executor(
+                None,
+                lambda: image_gen.generate_post_image(
+                    headline=headline.strip(),
+                    subline=subline.strip() or None,
+                    overline=overline.strip() or "CASE STUDY",
+                    topic_hint=topic_hint.strip(),
+                ),
+            )
+        except Exception as e:
+            log.exception("image gen failed")
+            return HTMLResponse(
+                f'<div class="banner warn">Image gen failed: {str(e)[:300]}</div>',
+                status_code=500,
+            )
+        # Build public URL the browser (and Postsyncer) can fetch
+        scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+        public_url = f"{scheme}://{host}/images/{result.filename}"
+        # Return an HTML fragment for HTMX to swap in
+        return HTMLResponse(
+            f'<div class="image-preview">'
+            f'  <img src="/images/{result.filename}" alt="post image">'
+            f'  <input type="hidden" name="image_url" value="{public_url}">'
+            f'  <div class="muted small">Image generated. Click Publish to attach it.</div>'
+            f'</div>'
+        )
 
     # ─── Manual triggers (post_now, refresh) ──────────────
 

@@ -65,10 +65,12 @@ def publish(
     platform: str,
     text: str,
     schedule_for: dict | None = None,
+    media_urls: list[str] | None = None,
 ) -> dict:
     """Schedule (or publish-now if schedule_for omitted) a single post.
 
     schedule_for shape: {"date": "2026-07-04", "time": "13:00", "timezone": "America/Toronto"}
+    media_urls: optional list of public image URLs to attach.
     """
     account_id = _platform_to_account_id(platform)
     if not account_id:
@@ -77,9 +79,13 @@ def publish(
             f"Connect the account in the Postsyncer dashboard and set the env var."
         )
 
+    content_item: dict = {"text": text}
+    if media_urls:
+        content_item["media"] = [u for u in media_urls if u]
+
     body: dict = {
         "workspace_id": config.POSTSYNCER_WORKSPACE_ID,
-        "content": [{"text": text}],
+        "content": [content_item],
         "accounts": [{"id": account_id}],
     }
     if schedule_for:
