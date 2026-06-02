@@ -347,6 +347,7 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
         idea: str = Form(...),
         linkedin_text: str = Form(""),
         x_text: str = Form(""),
+        threads_text: str = Form(""),
         mode: str = Form("schedule"),  # 'now' or 'schedule'
     ):
         if r := _require_auth(request):
@@ -363,7 +364,11 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
             schedule_iso = f"{schedule_for['date']}T{schedule_for['time']}:00"
 
         results = []
-        for platform_key, text in (("linkedin", linkedin_text), ("x", x_text)):
+        for platform_key, text in (
+            ("linkedin", linkedin_text),
+            ("x", x_text),
+            ("threads", threads_text),
+        ):
             text = (text or "").strip()
             if not text:
                 continue

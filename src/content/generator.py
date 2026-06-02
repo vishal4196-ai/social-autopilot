@@ -91,8 +91,16 @@ VOICE
 YOUR JOB
 
 Given a content idea (or a source post to remix), produce ONE post each for
-LinkedIn and X. They share an angle but are format-tuned per platform — NOT
-the same post truncated.
+LinkedIn, X, and Threads. All three share an angle but are format-tuned per
+platform — NOT the same post truncated.
+
+PLATFORM TUNING
+- LinkedIn (~{int(config.BRAND_CONFIG['generation']['linkedin_target_chars'])} chars): long-form, line breaks every
+  1-3 sentences for scannability, story-driven, professional but not stiff.
+- X (≤{int(config.BRAND_CONFIG['generation']['x_target_chars'])} chars): punchy, single hook + payoff, terse, build-in-public energy.
+- Threads (≤{int(config.BRAND_CONFIG['generation']['threads_target_chars'])} chars): conversational, more personal than X, less
+  formal than LinkedIn. Threads readers tune in for thoughts/observations,
+  not pitches. Cleaner punctuation than X (no twitter-style abbreviations).
 
 ═══════════════════════════════════════════════════════════════
 CALL-TO-ACTION POLICY (be RUTHLESS about this)
@@ -154,6 +162,8 @@ HARD RULES
 - One emoji max per post, only if it earns its keep. Default: zero.
 - X length: body ≤{int(config.BRAND_CONFIG['generation']['x_target_chars'])} characters
   (the system reserves ~25 chars for the URL if you include {CTA_TOKEN}).
+- Threads length: body ≤{int(config.BRAND_CONFIG['generation']['threads_target_chars'])} characters
+  (Threads hard-caps at 500 — reserve room for URL).
 - LinkedIn length: aim for {int(config.BRAND_CONFIG['generation']['linkedin_target_chars'])} chars,
   with line breaks every 1-3 sentences for scannability.
 
@@ -163,7 +173,8 @@ OUTPUT FORMAT
 Return JSON ONLY, no prose, no fences:
 {{
   "linkedin": "<full linkedin post text>",
-  "x": "<full x post text>"
+  "x": "<full x post text>",
+  "threads": "<full threads post text>"
 }}
 
 If you want the booking link in a post, put {CTA_TOKEN} where the URL should appear.
@@ -292,9 +303,10 @@ def generate(idea_text: str, *, post_id_hint: str) -> list[GeneratedPost]:
     data = _extract_json(raw)
 
     x_max_body = int(config.BRAND_CONFIG["generation"]["x_target_chars"])
+    threads_max_body = int(config.BRAND_CONFIG["generation"]["threads_target_chars"])
 
     results: list[GeneratedPost] = []
-    for platform_key in ("linkedin", "x"):
+    for platform_key in ("linkedin", "x", "threads"):
         body = (data.get(platform_key) or "").strip()
         if not body:
             continue
@@ -305,22 +317,23 @@ def generate(idea_text: str, *, post_id_hint: str) -> list[GeneratedPost]:
         if has_cta:
             body = body.replace(CTA_TOKEN, cta_url)
 
-        # X length safety net — only trim if no CTA URL inside (URL counts as
-        # ~23 chars on X regardless of real length, but we leave room).
-        if platform_key == "x":
-            # For length check, count the URL as ~25 chars even though it's longer literally.
+        # Length safety net for X (cap 280) and Threads (cap 500).
+        if platform_key in ("x", "threads"):
+            limit = x_max_body if platform_key == "x" else threads_max_body
+            # Count the URL as ~25 chars (X shortens to t.co; Threads similar).
             effective_len = len(body) - (len(cta_url) - 25 if cta_url else 0)
-            if effective_len > x_max_body + 25:
-                log.warning("X body %d effective chars > limit — truncating", effective_len)
-                # Trim from the body portion (not the URL). Simplistic but safe.
+            hard_cap = limit + 25
+            if effective_len > hard_cap:
+                log.warning("%s body %d effective chars > limit %d — truncating",
+                            platform_key, effective_len, hard_cap)
                 if cta_url and cta_url in body:
                     before, _, after = body.partition(cta_url)
-                    keep = x_max_body - len(after) - 30
+                    keep = limit - len(after) - 30
                     if keep > 50:
                         before = before[:keep].rstrip() + "… "
                     body = before + cta_url + after
                 else:
-                    body = body[: x_max_body - 1].rstrip() + "…"
+                    body = body[: limit - 1].rstrip() + "…"
 
         results.append(GeneratedPost(
             platform=platform_key,

@@ -76,9 +76,12 @@ viral_discovery:
 
 generation:
   posts_per_day: 3
-  variants_per_idea: 2   # LinkedIn (long) + X (short)
+  variants_per_idea: 3   # LinkedIn (long) + X (short) + Threads (medium)
   linkedin_target_chars: 1200
   # X total = body + "\n\n" + URL (~23 chars on t.co). Keep body ≤240 to stay under 280.
   x_target_chars: 240
+  # Threads cap is 500 chars per post — leave headroom for the URL.
+  threads_target_chars: 450
   hashtags_linkedin: 3
   hashtags_x: 2
+  hashtags_threads: 1

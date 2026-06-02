@@ -208,6 +208,7 @@ h2 { font-size: 18px; margin: 28px 0 12px; color: var(--text); letter-spacing: -
 }
 .badge-linkedin { background: rgba(10,102,194,0.18); color: #5aa9ff; border-color: rgba(10,102,194,0.4); }
 .badge-x { background: rgba(29,155,240,0.16); color: #5fbdff; border-color: rgba(29,155,240,0.4); }
+.badge-threads { background: rgba(180,180,180,0.14); color: #d4d4d4; border-color: rgba(255,255,255,0.18); }
 .badge-cta { background: rgba(204,0,0,0.15); color: var(--accent-hi); border-color: rgba(204,0,0,0.4); }
 .status-scheduled { color: #fbbf24; }
 .status-failed { color: var(--err); }

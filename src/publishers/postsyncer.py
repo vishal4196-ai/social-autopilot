@@ -55,6 +55,8 @@ def _platform_to_account_id(platform: str) -> int:
         return config.POSTSYNCER_LINKEDIN_ACCOUNT_ID
     if platform == "x":
         return config.POSTSYNCER_X_ACCOUNT_ID
+    if platform == "threads":
+        return config.POSTSYNCER_THREADS_ACCOUNT_ID
     raise ValueError(f"Unknown platform: {platform}")
 
 

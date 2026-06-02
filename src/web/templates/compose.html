@@ -51,6 +51,17 @@
     </div>
     {% endif %}
 
+    {% if draft.threads %}
+    <div class="variant">
+      <div class="variant-head">
+        <span class="badge badge-threads">Threads</span>
+        {% if draft.threads.included_cta %}<span class="badge badge-cta">CTA included</span>{% endif %}
+        <span class="muted small">{{ draft.threads.text | length }} chars</span>
+      </div>
+      <textarea name="threads_text" rows="7">{{ draft.threads.text }}</textarea>
+    </div>
+    {% endif %}
+
     <div class="radio-row">
       <label><input type="radio" name="mode" value="schedule" checked> Schedule for next slot</label>
       <label><input type="radio" name="mode" value="now"> Publish now</label>
