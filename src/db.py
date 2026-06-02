@@ -77,6 +77,25 @@ _MIGRATIONS = [
     ("viral_samples", "source_creator", "TEXT"),
     ("ideas", "score", "REAL"),
     ("ideas", "meta", "TEXT"),      # JSON: rationale, format, pain_point, platform_fit
+    ("ideas", "phase", "TEXT"),     # ideation | researching | drafted | approved | published | skipped
+    ("ideas", "drafts", "TEXT"),    # JSON {linkedin, x, threads, image_url}
+    ("ideas", "approved_at", "TEXT"),
+]
+
+# After columns exist, backfill phase for old rows based on source + status.
+_DATA_MIGRATIONS = [
+    # User-supplied ideas that were 'queued' under old model = already approved
+    "UPDATE ideas SET phase='approved' WHERE phase IS NULL AND status='queued' "
+    "AND source IN ('telegram', 'web', 'url_remix')",
+    # AI-suggested ideas that were 'queued' = needs user picking
+    "UPDATE ideas SET phase='ideation' WHERE phase IS NULL AND status='queued' "
+    "AND source='research_agent'",
+    # Old 'used' status = published
+    "UPDATE ideas SET phase='published' WHERE phase IS NULL AND status='used'",
+    # Skipped stays skipped
+    "UPDATE ideas SET phase='skipped' WHERE phase IS NULL AND status='skipped'",
+    # Any leftover → ideation (safe default)
+    "UPDATE ideas SET phase='ideation' WHERE phase IS NULL",
 ]
 
 
@@ -101,6 +120,8 @@ def _apply_migrations(conn) -> None:
         cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
         if column not in cols:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+    for sql in _DATA_MIGRATIONS:
+        conn.execute(sql)
 
 
 def init() -> None:
@@ -115,15 +136,24 @@ def add_idea(
     source: str = "telegram",
     score: float | None = None,
     meta: dict | None = None,
+    phase: str | None = None,
 ) -> int:
+    """Add an idea. Default phase depends on source:
+      - User-supplied (telegram/web/url_remix) → 'approved' (they already chose it)
+      - AI-suggested (research_agent) → 'ideation' (needs user picking)
+    """
+    if phase is None:
+        phase = "approved" if source in ("telegram", "web", "url_remix") else "ideation"
     with get_conn() as c:
         cur = c.execute(
-            "INSERT INTO ideas (text, source, score, meta, created_at) VALUES (?, ?, ?, ?, ?)",
+            """INSERT INTO ideas (text, source, score, meta, phase, status, created_at)
+               VALUES (?, ?, ?, ?, ?, 'queued', ?)""",
             (
                 text,
                 source,
                 score,
                 json.dumps(meta) if meta else None,
+                phase,
                 datetime.utcnow().isoformat(),
             ),
         )
@@ -131,40 +161,66 @@ def add_idea(
 
 
 def next_queued_idea() -> sqlite3.Row | None:
-    """Human-supplied ideas (telegram/web/url_remix) take priority over
-    AI-generated ones; within each tier, oldest first."""
+    """Picks the next idea ready to publish (phase='approved'), oldest first."""
     with get_conn() as c:
         return c.execute(
-            """
-            SELECT * FROM ideas
-            WHERE status = 'queued'
-            ORDER BY
-                CASE WHEN source = 'research_agent' THEN 1 ELSE 0 END ASC,
-                created_at ASC
-            LIMIT 1
-            """
+            """SELECT * FROM ideas
+               WHERE phase = 'approved'
+               ORDER BY COALESCE(approved_at, created_at) ASC
+               LIMIT 1"""
         ).fetchone()
 
 
 def mark_idea_used(idea_id: int) -> None:
     with get_conn() as c:
         c.execute(
-            "UPDATE ideas SET status = 'used', used_at = ? WHERE id = ?",
+            "UPDATE ideas SET status='used', phase='published', used_at=? WHERE id=?",
             (datetime.utcnow().isoformat(), idea_id),
         )
 
 
 def skip_idea(idea_id: int) -> None:
     with get_conn() as c:
-        c.execute("UPDATE ideas SET status = 'skipped' WHERE id = ?", (idea_id,))
+        c.execute("UPDATE ideas SET status='skipped', phase='skipped' WHERE id=?", (idea_id,))
 
 
 def list_queued(limit: int = 10) -> list[sqlite3.Row]:
+    """Back-compat alias: returns ideas waiting to publish (phase='approved')."""
+    return list_by_phase("approved", limit=limit)
+
+
+# ── Phase transitions ────────────────────────────────────
+def list_by_phase(phase: str, limit: int = 100) -> list[sqlite3.Row]:
     with get_conn() as c:
         return c.execute(
-            "SELECT * FROM ideas WHERE status = 'queued' ORDER BY created_at ASC LIMIT ?",
-            (limit,),
+            "SELECT * FROM ideas WHERE phase=? ORDER BY created_at DESC LIMIT ?",
+            (phase, limit),
         ).fetchall()
+
+
+def set_phase(idea_id: int, phase: str) -> None:
+    with get_conn() as c:
+        if phase == "approved":
+            c.execute(
+                "UPDATE ideas SET phase=?, approved_at=? WHERE id=?",
+                (phase, datetime.utcnow().isoformat(), idea_id),
+            )
+        else:
+            c.execute("UPDATE ideas SET phase=? WHERE id=?", (phase, idea_id))
+
+
+def save_drafts(idea_id: int, drafts: dict) -> None:
+    """drafts = {linkedin: text, x: text, threads: text, image_url: optional}"""
+    with get_conn() as c:
+        c.execute(
+            "UPDATE ideas SET drafts=?, phase='drafted' WHERE id=?",
+            (json.dumps(drafts), idea_id),
+        )
+
+
+def get_idea(idea_id: int) -> sqlite3.Row | None:
+    with get_conn() as c:
+        return c.execute("SELECT * FROM ideas WHERE id=?", (idea_id,)).fetchone()
 
 
 # ── Posts ─────────────────────────────────────────────────

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Publisher · Vishal AI{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1>Publisher</h1>
+    <div class="page-sub">Review what Claude wrote. Edit, then approve to send to Launch.</div>
+  </div>
+</div>
+
+{% if not drafts %}
+  <p class="muted">Nothing waiting for approval. Send an idea to drafting from the Ideation tab.</p>
+{% endif %}
+
+{% for d in drafts %}
+  <form method="post" action="/publisher/{{ d.row.id }}/approve" class="compose-form">
+    <div class="card-meta" style="margin-top: 24px;">
+      <span class="idea-id">#{{ d.row.id }}</span>
+      <span class="badge">{{ d.row.source }}</span>
+      {% if d.row.score %}<span class="badge score-badge">{{ d.row.score }}</span>{% endif %}
+    </div>
+    <div class="card-text muted small">{{ _t(d.row.text, 220) }}</div>
+
+    {% if d.drafts.linkedin %}
+      <div class="variant">
+        <div class="variant-head">
+          <span class="badge badge-linkedin">LinkedIn</span>
+          <span class="muted small">{{ d.drafts.linkedin | length }} chars</span>
+        </div>
+        <textarea name="linkedin_text" rows="12">{{ d.drafts.linkedin }}</textarea>
+      </div>
+    {% endif %}
+
+    {% if d.drafts.x %}
+      <div class="variant">
+        <div class="variant-head">
+          <span class="badge badge-x">X / Twitter</span>
+          <span class="muted small">{{ d.drafts.x | length }} chars</span>
+        </div>
+        <textarea name="x_text" rows="5">{{ d.drafts.x }}</textarea>
+      </div>
+    {% endif %}
+
+    {% if d.drafts.threads %}
+      <div class="variant">
+        <div class="variant-head">
+          <span class="badge badge-threads">Threads</span>
+          <span class="muted small">{{ d.drafts.threads | length }} chars</span>
+        </div>
+        <textarea name="threads_text" rows="6">{{ d.drafts.threads }}</textarea>
+      </div>
+    {% endif %}
+
+    <input type="hidden" name="image_url" value="{{ d.drafts.image_url or '' }}">
+
+    <div class="card-actions" style="justify-content: space-between;">
+      <button type="submit" class="btn primary">✓ Approve · send to Launch</button>
+      <div>
+        <button type="submit" formaction="/publisher/{{ d.row.id }}/back" class="btn">↺ Back to Ideation</button>
+        <button type="submit" formaction="/publisher/{{ d.row.id }}/skip" class="btn ghost danger">Kill</button>
+      </div>
+    </div>
+  </form>
+{% endfor %}
+
+{% endblock %}

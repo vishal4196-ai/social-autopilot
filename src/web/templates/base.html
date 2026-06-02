@@ -3,30 +3,75 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0a0a0a">
+  <meta name="theme-color" content="#ffffff">
   <title>{% block title %}Vishal AI{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
 </head>
 <body>
-  {% if request.session.get('authed') %}
-  <nav class="topnav">
-    <a href="/" class="brand">VISHAL<span class="dot">.</span>AI</a>
-    <button class="hamburger" aria-label="menu" onclick="document.querySelector('.menu').classList.toggle('open')">≡</button>
-    <ul class="menu">
-      <li><a href="/" class="{% if page == 'dashboard' %}active{% endif %}">Dashboard</a></li>
-      <li><a href="/research" class="{% if page == 'research' %}active{% endif %}">Research</a></li>
-      <li><a href="/queue" class="{% if page == 'queue' %}active{% endif %}">Queue</a></li>
-      <li><a href="/compose" class="{% if page == 'compose' %}active{% endif %}">Compose</a></li>
-      <li><a href="/posts" class="{% if page == 'posts' %}active{% endif %}">Posts</a></li>
-      <li><a href="/creators" class="{% if page == 'creators' %}active{% endif %}">Creators</a></li>
-      <li><a href="/settings" class="{% if page == 'settings' %}active{% endif %}">Settings</a></li>
-      <li><a href="/logout" class="logout">Logout</a></li>
+{% if request.session.get('authed') %}
+<div class="app">
+  <button class="sidebar-toggle" aria-label="menu"
+          onclick="document.querySelector('.sidebar').classList.toggle('open')">≡</button>
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <span class="sidebar-logo">V</span>
+      <span>VISHAL<span class="dot">.</span>AI</span>
+    </div>
+
+    <div class="sidebar-section">Workspace</div>
+    <ul class="sidebar-nav">
+      <li><a href="/" class="{% if page == 'overview' %}active{% endif %}">
+        <span class="nav-icon">◰</span>Overview
+      </a></li>
     </ul>
-  </nav>
-  {% endif %}
-  <main class="container">
-    {% block content %}{% endblock %}
+
+    <div class="sidebar-section">Content pipeline</div>
+    <ul class="sidebar-nav">
+      <li><a href="/ideation" class="{% if page == 'ideation' %}active{% endif %}">
+        <span class="nav-icon">✦</span>Ideation
+        {% if nav_counts and nav_counts.ideation %}<span class="nav-badge">{{ nav_counts.ideation }}</span>{% endif %}
+      </a></li>
+      <li><a href="/research" class="{% if page == 'research' %}active{% endif %}">
+        <span class="nav-icon">⌕</span>Research
+        {% if nav_counts and nav_counts.researching %}<span class="nav-badge">{{ nav_counts.researching }}</span>{% endif %}
+      </a></li>
+      <li><a href="/publisher" class="{% if page == 'publisher' %}active{% endif %}">
+        <span class="nav-icon">✎</span>Publisher
+        {% if nav_counts and nav_counts.drafted %}<span class="nav-badge">{{ nav_counts.drafted }}</span>{% endif %}
+      </a></li>
+      <li><a href="/launch" class="{% if page == 'launch' %}active{% endif %}">
+        <span class="nav-icon">▶</span>Launch
+        {% if nav_counts and nav_counts.approved %}<span class="nav-badge">{{ nav_counts.approved }}</span>{% endif %}
+      </a></li>
+    </ul>
+
+    <div class="sidebar-section">Sources</div>
+    <ul class="sidebar-nav">
+      <li><a href="/creators" class="{% if page == 'creators' %}active{% endif %}">
+        <span class="nav-icon">◉</span>Creators
+      </a></li>
+    </ul>
+
+    <div class="sidebar-section">Account</div>
+    <ul class="sidebar-nav">
+      <li><a href="/settings" class="{% if page == 'settings' %}active{% endif %}">
+        <span class="nav-icon">⚙</span>Settings
+      </a></li>
+      <li><a href="/logout"><span class="nav-icon">⤴</span>Logout</a></li>
+    </ul>
+
+    <div class="sidebar-footer">UpliftAI.co · v0.2</div>
+  </aside>
+
+  <main class="main">
+    <div class="container">
+      {% block content %}{% endblock %}
+    </div>
   </main>
+</div>
+{% else %}
+{% block content %}{% endblock %}
+{% endif %}
 </body>
 </html>

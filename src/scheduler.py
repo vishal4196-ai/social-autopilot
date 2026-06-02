@@ -30,70 +30,80 @@ def _fallback_idea_text() -> str:
 
 
 def run_post_cycle() -> None:
-    """One end-to-end run: idea → generate → publish. Called by APScheduler."""
+    """One end-to-end run: pick approved idea → publish its saved drafts.
+
+    In the new phase model, ideas are only picked when phase='approved' —
+    meaning the user has explicitly OK'd them. We publish exactly what they
+    approved (no regeneration), to preserve their edits.
+
+    If the approved idea has no saved drafts (legacy data), fall back to
+    generating on the fly.
+    """
+    import json as _json
     log.info("─── post cycle start ───")
 
-    # 1. Pick idea source
     idea_row = db.next_queued_idea()
-    if idea_row:
-        idea_text = idea_row["text"]
-        idea_id = idea_row["id"]
-        log.info("Using queued idea #%d", idea_id)
-    else:
-        log.info("Queue empty — using viral-inspired fallback")
-        idea_text = _fallback_idea_text()
-        idea_id = None
-
-    # 2. Generate variants
-    post_id_hint = f"{datetime.utcnow().strftime('%Y%m%d_%H%M')}"
-    try:
-        variants = generator.generate(idea_text, post_id_hint=post_id_hint)
-    except Exception as e:
-        log.exception("Generation failed: %s", e)
-        if idea_id:
-            db.log_post(
-                idea_id=idea_id,
-                platform="linkedin",
-                text=idea_text,
-                cta_url=config.CTA_URL,
-                status="failed",
-                error=f"generation: {e}",
-            )
+    if not idea_row:
+        log.info("No approved ideas — skipping cycle. Approve some in /publisher.")
         return
 
-    if not variants:
-        log.warning("Generator returned 0 variants")
-        return
+    idea_id = idea_row["id"]
+    idea_text = idea_row["text"]
+    log.info("Picking approved idea #%d", idea_id)
 
-    # 3. Publish each variant (LinkedIn + X)
-    any_success = False
-    for v in variants:
+    # Use saved drafts if present (preserves user edits); else regenerate.
+    variants_payload: list[tuple[str, str, str]] = []  # (platform, text, cta_url)
+    saved_drafts: dict = {}
+    if idea_row["drafts"]:
         try:
-            resp = postsyncer.publish(platform=v.platform, text=v.text)
+            saved_drafts = _json.loads(idea_row["drafts"]) or {}
+        except (ValueError, TypeError):
+            saved_drafts = {}
+
+    image_url = (saved_drafts.get("image_url") or "").strip()
+
+    if saved_drafts.get("linkedin") or saved_drafts.get("x") or saved_drafts.get("threads"):
+        for platform_key in ("linkedin", "x", "threads"):
+            text = (saved_drafts.get(platform_key) or "").strip()
+            if text:
+                variants_payload.append((platform_key, text, ""))
+        log.info("Using user-approved drafts (no regeneration)")
+    else:
+        log.info("No saved drafts — regenerating from idea text")
+        post_id_hint = datetime.utcnow().strftime("%Y%m%d_%H%M")
+        try:
+            generated = generator.generate(idea_text, post_id_hint=post_id_hint)
+        except Exception as e:
+            log.exception("Generation failed: %s", e)
+            return
+        variants_payload = [(v.platform, v.text, v.cta_url) for v in generated]
+
+    if not variants_payload:
+        log.warning("No variants to publish")
+        return
+
+    any_success = False
+    for platform_key, text, cta_url in variants_payload:
+        try:
+            resp = postsyncer.publish(
+                platform=platform_key, text=text,
+                media_urls=[image_url] if image_url else None,
+            )
             ps_id = str(resp.get("data", {}).get("id") or resp.get("id") or "")
             db.log_post(
-                idea_id=idea_id,
-                platform=v.platform,
-                text=v.text,
-                cta_url=v.cta_url,
-                status="scheduled",
-                postsyncer_post_id=ps_id,
+                idea_id=idea_id, platform=platform_key, text=text,
+                cta_url=cta_url, status="scheduled", postsyncer_post_id=ps_id,
             )
-            log.info("Published to %s (postsyncer_id=%s)", v.platform, ps_id)
+            log.info("Published to %s (postsyncer_id=%s)", platform_key, ps_id)
             any_success = True
         except Exception as e:
-            log.exception("Publish failed for %s: %s", v.platform, e)
+            log.exception("Publish failed for %s: %s", platform_key, e)
             db.log_post(
-                idea_id=idea_id,
-                platform=v.platform,
-                text=v.text,
-                cta_url=v.cta_url,
-                status="failed",
-                error=str(e)[:500],
+                idea_id=idea_id, platform=platform_key, text=text,
+                cta_url=cta_url, status="failed", error=str(e)[:500],
             )
 
-    # 4. Mark idea consumed (only if at least one platform succeeded)
-    if idea_id and any_success:
+    if any_success:
         db.mark_idea_used(idea_id)
 
     log.info("─── post cycle done ───")

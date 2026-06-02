@@ -82,6 +82,24 @@ def _truncate(text: str, n: int) -> str:
     return text if len(text) <= n else text[: n - 1] + "…"
 
 
+def _nav_counts() -> dict:
+    """Sidebar phase badges."""
+    return {
+        "ideation": len(db.list_by_phase("ideation", limit=999)),
+        "researching": len(db.list_by_phase("researching", limit=999)),
+        "drafted": len(db.list_by_phase("drafted", limit=999)),
+        "approved": len(db.list_by_phase("approved", limit=999)),
+    }
+
+
+def _ctx(extra: dict | None = None) -> dict:
+    """Common context: page + nav_counts. Routes spread their own dict over this."""
+    base = {"nav_counts": _nav_counts()}
+    if extra:
+        base.update(extra)
+    return base
+
+
 # ── The route registrar ───────────────────────────────────
 
 def register(app: FastAPI, templates: Jinja2Templates) -> None:
@@ -122,31 +140,158 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
     async def healthz():
         return {"ok": True, "service": "vishal-ai-web"}
 
-    # ─── Dashboard ────────────────────────────────────────
+    # ─── Overview (dashboard) ────────────────────────────
 
     @app.get("/", response_class=HTMLResponse)
-    async def dashboard(request: Request):
+    async def overview(request: Request):
         if r := _require_auth(request):
             return r
-        ideas = db.list_queued(limit=100)
+        nav = _nav_counts()
         posts = db.recent_posts(limit=5)
-        creators_count = len(db.list_creators())
         return templates.TemplateResponse(
-            request,
-            "dashboard.html",
-            {
-                "page": "dashboard",
-                "queued_count": len(ideas),
+            request, "overview.html",
+            _ctx({
+                "page": "overview",
+                "nav_counts": nav,
+                "ideation_count": nav["ideation"],
+                "researching_count": nav["researching"],
+                "drafted_count": nav["drafted"],
+                "approved_count": nav["approved"],
                 "posts_count": len(db.recent_posts(limit=1000)),
-                "creators_count": creators_count,
+                "creators_count": len(db.list_creators()),
                 "recent_posts": posts,
                 "next_slot": _next_scheduled_slot(),
                 "apify_on": config.APIFY_ENABLED,
                 "post_times": config.POST_TIMES,
                 "timezone": config.TIMEZONE,
                 "_t": _truncate,
-            },
+            }),
         )
+
+    # ─── Ideation ─────────────────────────────────────────
+
+    @app.get("/ideation", response_class=HTMLResponse)
+    async def ideation_get(request: Request):
+        if r := _require_auth(request):
+            return r
+        all_ideation = db.list_by_phase("ideation", limit=200)
+        ai_ideas = [i for i in all_ideation if i["source"] == "research_agent"]
+        my_ideas = [i for i in all_ideation if i["source"] != "research_agent"]
+        return templates.TemplateResponse(
+            request, "ideation.html",
+            _ctx({
+                "page": "ideation",
+                "ai_ideas": ai_ideas, "my_ideas": my_ideas,
+                "_t": _truncate,
+            }),
+        )
+
+    @app.post("/ideation/add")
+    async def ideation_add(request: Request, text: str = Form(...)):
+        if r := _require_auth(request):
+            return r
+        text = (text or "").strip()
+        if text:
+            db.add_idea(text, source="web", phase="ideation")
+        return RedirectResponse(url="/ideation", status_code=303)
+
+    @app.post("/ideation/{idea_id}/draft")
+    async def ideation_draft(request: Request, idea_id: int):
+        """Move an idea from ideation → drafted (Claude writes the variants)."""
+        if r := _require_auth(request):
+            return r
+        idea = db.get_idea(idea_id)
+        if not idea:
+            return RedirectResponse(url="/ideation", status_code=303)
+        from ..content import generator
+        loop = asyncio.get_running_loop()
+        post_id_hint = datetime.utcnow().strftime("%Y%m%d_%H%M%S") + f"_idea{idea_id}"
+        try:
+            variants = await loop.run_in_executor(
+                None, lambda: generator.generate(idea["text"], post_id_hint=post_id_hint)
+            )
+            drafts = {v.platform: v.text for v in variants}
+            db.save_drafts(idea_id, drafts)
+        except Exception:
+            log.exception("draft failed for idea %d", idea_id)
+        return RedirectResponse(url="/publisher", status_code=303)
+
+    @app.post("/ideation/{idea_id}/skip")
+    async def ideation_skip(request: Request, idea_id: int):
+        if r := _require_auth(request):
+            return r
+        db.skip_idea(idea_id)
+        return RedirectResponse(url="/ideation", status_code=303)
+
+    # ─── Publisher (review drafts, approve) ──────────────
+
+    @app.get("/publisher", response_class=HTMLResponse)
+    async def publisher_get(request: Request):
+        if r := _require_auth(request):
+            return r
+        import json as _json
+        drafts = db.list_by_phase("drafted", limit=200)
+        parsed = []
+        for row in drafts:
+            try:
+                d = _json.loads(row["drafts"]) if row["drafts"] else {}
+            except (ValueError, TypeError):
+                d = {}
+            parsed.append({"row": row, "drafts": d})
+        return templates.TemplateResponse(
+            request, "publisher.html",
+            _ctx({"page": "publisher", "drafts": parsed, "_t": _truncate}),
+        )
+
+    @app.post("/publisher/{idea_id}/approve")
+    async def publisher_approve(
+        request: Request,
+        idea_id: int,
+        linkedin_text: str = Form(""),
+        x_text: str = Form(""),
+        threads_text: str = Form(""),
+        image_url: str = Form(""),
+    ):
+        """User-edited drafts go back into DB, phase → approved."""
+        if r := _require_auth(request):
+            return r
+        import json as _json
+        drafts = {
+            "linkedin": linkedin_text.strip(),
+            "x": x_text.strip(),
+            "threads": threads_text.strip(),
+            "image_url": image_url.strip(),
+        }
+        with db.get_conn() as c:
+            c.execute(
+                "UPDATE ideas SET drafts=?, phase='approved', approved_at=? WHERE id=?",
+                (_json.dumps(drafts), datetime.utcnow().isoformat(), idea_id),
+            )
+        return RedirectResponse(url="/publisher", status_code=303)
+
+    @app.post("/publisher/{idea_id}/back")
+    async def publisher_back(request: Request, idea_id: int):
+        if r := _require_auth(request):
+            return r
+        db.set_phase(idea_id, "ideation")
+        return RedirectResponse(url="/publisher", status_code=303)
+
+    @app.post("/publisher/{idea_id}/skip")
+    async def publisher_skip(request: Request, idea_id: int):
+        if r := _require_auth(request):
+            return r
+        db.skip_idea(idea_id)
+        return RedirectResponse(url="/publisher", status_code=303)
+
+    # /posts kept as redirect to /launch for backwards compat
+    @app.get("/posts")
+    async def posts_redirect(request: Request, year: int | None = None, month: int | None = None, view: str = "calendar"):
+        qs = []
+        if year: qs.append(f"year={year}")
+        if month: qs.append(f"month={month}")
+        if view and view != "calendar": qs.append(f"view={view}")
+        target = "/launch" + ("?" + "&".join(qs) if qs else "")
+        return RedirectResponse(url=target, status_code=303)
 
     # ─── Queue ────────────────────────────────────────────
 
@@ -179,8 +324,8 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
 
     # ─── Posts history ────────────────────────────────────
 
-    @app.get("/posts", response_class=HTMLResponse)
-    async def posts_get(
+    @app.get("/launch", response_class=HTMLResponse)
+    async def launch_get(
         request: Request,
         year: int | None = None,
         month: int | None = None,
@@ -198,7 +343,7 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
             return templates.TemplateResponse(
                 request,
                 "posts.html",
-                {"page": "posts", "view": "list", "posts": posts, "_t": _truncate},
+                _ctx({"page": "launch", "view": "list", "posts": posts, "_t": _truncate}),
             )
 
         # Calendar view
@@ -241,8 +386,8 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
         return templates.TemplateResponse(
             request,
             "posts.html",
-            {
-                "page": "posts",
+            _ctx({
+                "page": "launch",
                 "view": "calendar",
                 "weeks": weeks,
                 "day_headers": DAY_HEADERS,
@@ -250,7 +395,7 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
                 "prev_y": prev_y, "prev_m": prev_m,
                 "next_y": next_y, "next_m": next_m,
                 "timezone": config.TIMEZONE,
-            },
+            }),
         )
 
     # ─── Creators ─────────────────────────────────────────

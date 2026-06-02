@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Ideation · Vishal AI{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1>Ideation</h1>
+    <div class="page-sub">Capture ideas, pick the ones worth shipping, send them to drafting.</div>
+  </div>
+  <div class="page-actions">
+    <form method="post" action="/research/run" class="inline">
+      <button class="btn primary">✦ Ask AI for fresh ideas</button>
+    </form>
+  </div>
+</div>
+
+<form method="post" action="/ideation/add" class="add-form" style="margin-top: 12px;">
+  <textarea name="text" rows="2" placeholder="Drop a thought — a client win, a hot take, an angle you want to test. The agent will read recent posts + your tracked creators when it drafts."></textarea>
+  <button class="btn primary" style="align-self: flex-start;">Add to ideation</button>
+</form>
+
+<div class="cols split">
+  {# ─ Your ideas ──────────────────────────────────────── #}
+  <div>
+    <div class="col-head">
+      <h2>Your ideas</h2>
+      <span class="col-count">{{ my_ideas | length }}</span>
+    </div>
+    {% if my_ideas %}
+      {% for i in my_ideas %}
+        <div class="card">
+          <div class="card-meta">
+            <span class="idea-id">#{{ i.id }}</span>
+            <span class="badge">{{ i.source }}</span>
+            <span class="muted small">{{ i.created_at[:10] }}</span>
+          </div>
+          <div class="card-text">{{ _t(i.text, 320) }}</div>
+          <div class="card-actions">
+            <form method="post" action="/ideation/{{ i.id }}/draft" class="inline">
+              <button class="btn primary small">✎ Draft</button>
+            </form>
+            <form method="post" action="/ideation/{{ i.id }}/skip" class="inline">
+              <button class="btn ghost small">Skip</button>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted small">No ideas yet. Add one above, or text the Telegram bot.</p>
+    {% endif %}
+  </div>
+
+  {# ─ AI suggestions ──────────────────────────────────── #}
+  <div>
+    <div class="col-head">
+      <h2>AI suggestions</h2>
+      <span class="col-count">{{ ai_ideas | length }}</span>
+    </div>
+    {% if ai_ideas %}
+      {% for i in ai_ideas %}
+        {% set meta = i.meta and (i.meta | safe) %}
+        <div class="card idea-card">
+          <div class="card-meta">
+            <span class="idea-id">#{{ i.id }}</span>
+            {% if i.score %}<span class="badge score-badge">{{ i.score }}</span>{% endif %}
+            <span class="muted small">{{ i.created_at[:10] }}</span>
+          </div>
+          <div class="card-text">{{ _t(i.text, 320) }}</div>
+          <div class="card-actions">
+            <form method="post" action="/ideation/{{ i.id }}/draft" class="inline">
+              <button class="btn primary small">✎ Draft</button>
+            </form>
+            <form method="post" action="/ideation/{{ i.id }}/skip" class="inline">
+              <button class="btn ghost small">Skip</button>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted small">No AI suggestions in ideation yet. Click "Ask AI for fresh ideas" above to populate.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
