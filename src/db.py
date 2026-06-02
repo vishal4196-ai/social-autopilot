@@ -343,6 +343,33 @@ def latest_research_brief() -> dict | None:
     }
 
 
+def recent_cycles_with_cta(cycles: int = 5) -> int:
+    """How many of the most recent post cycles included a CTA on any platform.
+    A 'cycle' = posts sharing an idea_id (LinkedIn+X+Threads from the same idea).
+    Used to enforce a hard 1-in-N CTA budget — once we've hit the cap, the
+    generator strips {{CTA}} from outputs regardless of what Claude wants.
+    """
+    # Pull recent posts; group by idea_id; count idea_ids where any post had cta_url.
+    with get_conn() as c:
+        rows = c.execute(
+            "SELECT idea_id, cta_url FROM posts ORDER BY created_at DESC LIMIT ?",
+            (cycles * 4,),  # over-fetch so we get at least N distinct cycles
+        ).fetchall()
+    seen_cycles: list[int] = []
+    cycles_with_cta: set[int] = set()
+    for r in rows:
+        iid = r["idea_id"]
+        if iid is None:
+            continue
+        if iid not in seen_cycles:
+            seen_cycles.append(iid)
+        if (r["cta_url"] or "").strip():
+            cycles_with_cta.add(iid)
+        if len(seen_cycles) >= cycles:
+            break
+    return len([c for c in seen_cycles if c in cycles_with_cta])
+
+
 def recent_idea_texts(limit: int = 10) -> list[str]:
     """Recent idea + post text, so the ideator avoids repeating angles."""
     with get_conn() as c:

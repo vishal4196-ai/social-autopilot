@@ -155,8 +155,13 @@ and choose a DIFFERENT format. Mix from:
 ═══════════════════════════════════════════════════════════════
 HARD RULES
 
+- ABSOLUTELY NO EM-DASHES (—) OR EN-DASHES (–). EVER. Anywhere in the post.
+  These read as AI-generated and they make Vishal sound robotic. Use periods,
+  colons, commas, semicolons, or parentheses instead. A plain hyphen (-)
+  inside compound words is fine (e.g. "AI-generated"). But NO " — " or " – ".
+  This rule has zero exceptions.
 - Never use: "game changer", "unlock", "leverage", "in today's fast-paced world",
-  "synergy", "revolutionize", em-dashes inside marketing-speak.
+  "synergy", "revolutionize".
 - Lead with a SPECIFIC, concrete hook. Number, contradiction, story, or claim.
   Never start with "In today's..." or "As an AI agency...".
 - One emoji max per post, only if it earns its keep. Default: zero.
@@ -238,6 +243,22 @@ def _build_recent_self_context(limit: int = 4) -> str:
     )
 
 
+_EM_DASH_RE = re.compile(r"\s*[—–]\s*")
+
+
+def _strip_em_dashes(text: str) -> str:
+    """Defense in depth: even if Claude slips, no em/en-dashes ship."""
+    text = _EM_DASH_RE.sub(", ", text)
+    # Collapse any accidental ", ," from double-strips
+    text = re.sub(r",\s*,", ",", text)
+    return text
+
+
+# Hard CTA budget: at most 1 in N consecutive cycles may carry a booking link.
+# This is enforced in code regardless of what Claude decides.
+CTA_BUDGET_WINDOW_CYCLES = 5
+
+
 def _append_utm(url: str, post_id_hint: str, platform: str) -> str:
     parsed = urlparse(url)
     extra = urlencode({
@@ -305,13 +326,30 @@ def generate(idea_text: str, *, post_id_hint: str) -> list[GeneratedPost]:
     x_max_body = int(config.BRAND_CONFIG["generation"]["x_target_chars"])
     threads_max_body = int(config.BRAND_CONFIG["generation"]["threads_target_chars"])
 
+    # Programmatic CTA budget: if any of the last N cycles included a CTA,
+    # strip {{CTA}} from THIS cycle regardless of what Claude wants.
+    cycles_with_cta = db.recent_cycles_with_cta(cycles=CTA_BUDGET_WINDOW_CYCLES)
+    cta_budget_exhausted = cycles_with_cta >= 1
+    if cta_budget_exhausted:
+        log.info("CTA budget exhausted (%d of last %d cycles had CTA) — stripping {{CTA}}",
+                 cycles_with_cta, CTA_BUDGET_WINDOW_CYCLES)
+
     results: list[GeneratedPost] = []
     for platform_key in ("linkedin", "x", "threads"):
         body = (data.get(platform_key) or "").strip()
         if not body:
             continue
 
+        # Defense in depth: strip em/en-dashes that Claude slipped in.
+        body = _strip_em_dashes(body)
+
         has_cta = CTA_TOKEN in body
+
+        # Enforce the cycle-level budget: strip the token if budget spent.
+        if has_cta and cta_budget_exhausted:
+            body = body.replace(CTA_TOKEN, "").rstrip().rstrip(":,-").rstrip()
+            has_cta = False
+
         cta_url = _append_utm(config.CTA_URL, post_id_hint, platform_key) if has_cta else ""
 
         if has_cta:
