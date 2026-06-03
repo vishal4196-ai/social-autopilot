@@ -52,7 +52,37 @@
       </div>
     {% endif %}
 
-    <input type="hidden" name="image_url" value="{{ d.drafts.image_url or '' }}">
+    {# ── Image (optional, attached to all 3 platforms) ─── #}
+    <div class="variant image-gen-block">
+      <div class="variant-head">
+        <span class="badge">🖼 Image</span>
+        <span class="muted small">Generate a branded image — attaches to all 3 posts on approve</span>
+      </div>
+      <div class="image-controls">
+        <input type="text" name="headline" placeholder="Headline (e.g. 30 articles in month one. +156% local visibility.)">
+        <input type="text" name="subline" placeholder="Sub-line (optional)">
+        <input type="text" name="overline" placeholder="Overline (default: CASE STUDY)">
+        <input type="hidden" name="topic_hint" value="{{ (d.drafts.linkedin or d.drafts.x or d.row.text)[:200] }}">
+        <button type="button" class="btn"
+                hx-post="/compose/image"
+                hx-include="closest .image-gen-block input"
+                hx-target="#img-{{ d.row.id }}"
+                hx-swap="innerHTML"
+                hx-indicator="#img-spin-{{ d.row.id }}">
+          🎨 Generate image
+        </button>
+        <span id="img-spin-{{ d.row.id }}" class="htmx-indicator muted small"> generating…</span>
+      </div>
+      <div id="img-{{ d.row.id }}">
+        {% if d.drafts.image_url %}
+          <div class="image-preview">
+            <img src="{{ d.drafts.image_url }}" alt="post image">
+            <input type="hidden" name="image_url" value="{{ d.drafts.image_url }}">
+            <div class="muted small">Image already attached.</div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
 
     <div class="card-actions" style="justify-content: space-between;">
       <button type="submit" class="btn primary">✓ Approve · send to Launch</button>
