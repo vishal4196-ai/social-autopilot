@@ -3,7 +3,9 @@
 
 {# ── Platform icon macro ─────────────────────────────── #}
 {% macro platform_icon(platform) %}
-  {% if platform == 'linkedin' %}
+  {% if platform == 'scheduled' %}
+    <span class="picon-text" title="Scheduled across LinkedIn + X + Threads">📅</span>
+  {% elif platform == 'linkedin' %}
     <svg class="picon" viewBox="0 0 24 24" width="14" height="14" aria-label="LinkedIn">
       <rect width="24" height="24" rx="4" fill="#0a66c2"/>
       <path fill="#fff" d="M7.2 9.6H4.8V19h2.4zM6 8.4a1.4 1.4 0 110-2.8 1.4 1.4 0 010 2.8zM19.2 19h-2.4v-4.9c0-1.2-.4-2-1.5-2-1 0-1.5.7-1.5 2V19h-2.4V9.6h2.3v1.1c.3-.5 1-1.2 2.3-1.2 1.7 0 3.2 1.1 3.2 3.6z"/>

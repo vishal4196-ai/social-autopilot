@@ -351,6 +351,7 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
         m = month or now_local.month
 
         buckets: dict[tuple[int, int, int], list] = defaultdict(list)
+        # 1. Already-published / scheduled posts (one entry per platform)
         for p in posts:
             d = _post_calendar_date(p, tz)
             buckets[(d.year, d.month, d.day)].append({
@@ -359,6 +360,42 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
                 "platform": p["platform"],
                 "snippet": _truncate(p["text"], 42),
                 "status": p["status"],
+            })
+
+        # 2. Approved-but-pending ideas → place on upcoming scheduled slots
+        approved = list(db.list_by_phase("approved", limit=200))
+        # Oldest-approved first (matches scheduler pick order)
+        approved.sort(key=lambda r: r["approved_at"] or r["created_at"])
+        upcoming_slots: list[datetime] = []
+        day_cursor = now_local.date()
+        max_days = 60
+        while len(upcoming_slots) < len(approved) and max_days > 0:
+            for slot_str in config.POST_TIMES:
+                hh, mm = slot_str.split(":")
+                slot_dt = datetime(
+                    day_cursor.year, day_cursor.month, day_cursor.day,
+                    int(hh), int(mm), tzinfo=tz,
+                )
+                if slot_dt > now_local:
+                    upcoming_slots.append(slot_dt)
+            day_cursor = day_cursor + timedelta(days=1)
+            max_days -= 1
+        for idea, slot in zip(approved, upcoming_slots):
+            # Show the LinkedIn variant snippet if drafts exist; else raw idea text.
+            preview = idea["text"]
+            if idea["drafts"]:
+                try:
+                    import json as _json
+                    d = _json.loads(idea["drafts"]) or {}
+                    preview = d.get("linkedin") or d.get("x") or d.get("threads") or preview
+                except (ValueError, TypeError):
+                    pass
+            buckets[(slot.year, slot.month, slot.day)].append({
+                "time": _time_label(slot),
+                "sort": slot,
+                "platform": "scheduled",   # template renders a calendar icon
+                "snippet": _truncate(preview, 42),
+                "status": "approved",
             })
 
         cal_obj = cal_mod.Calendar(firstweekday=6)  # Sunday-first

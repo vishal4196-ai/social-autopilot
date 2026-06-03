@@ -452,7 +452,8 @@ textarea:focus, input:focus, select:focus {
   overflow: hidden;
 }
 .cal-post.status-scheduled, .cal-post.status-drafted { border-left-color: #fbbf24; }
-.cal-post.status-published, .cal-post.status-approved { border-left-color: var(--ok); }
+.cal-post.status-approved { border-left-color: #fbbf24; background: #fffbeb; }
+.cal-post.status-published { border-left-color: var(--ok); }
 .cal-post.status-failed { border-left-color: var(--err); }
 .cal-post-top { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
 .cal-time { font-size: 10px; color: var(--muted); font-weight: 600; }
