@@ -60,15 +60,14 @@ TIMEZONE = _env("TIMEZONE", "America/Toronto")
 # Research agent
 RESEARCH_MODEL = _env("RESEARCH_MODEL", CLAUDE_MODEL)
 ENABLE_WEB_SEARCH = _bool("ENABLE_WEB_SEARCH", True)     # let research agent web-search trends
-IDEAS_PER_RUN = int(_env("IDEAS_PER_RUN", "18"))         # how many ideas the ideator drafts per run
+IDEAS_PER_RUN = int(_env("IDEAS_PER_RUN", "12"))         # how many ideas the ideator drafts per run
 
-# Weekly ideation cadence (the main schedule now)
-WEEKLY_IDEATION_DAY = _env("WEEKLY_IDEATION_DAY", "sun").lower()  # cron day_of_week
-WEEKLY_IDEATION_TIME = _env("WEEKLY_IDEATION_TIME", "06:00")      # HH:MM in TIMEZONE
-WEEKLY_IDEATION_COUNT = int(_env("WEEKLY_IDEATION_COUNT", "15"))  # ideas auto-queued each Sunday
+# Daily ideation cadence — every morning a fresh batch lands in /ideation
+IDEATION_TIME = _env("IDEATION_TIME", "06:00")          # HH:MM in TIMEZONE
+IDEATION_COUNT = int(_env("IDEATION_COUNT", "5"))       # ideas auto-added per day
 NOTIFY_TELEGRAM_AFTER_IDEATION = _bool("NOTIFY_TELEGRAM_AFTER_IDEATION", True)
 
-# Legacy daily IDEAS_TO_QUEUE (only used if someone calls research manually w/o override)
+# Fallback for manual research triggers (web/Telegram "research" command)
 IDEAS_TO_QUEUE = int(_env("IDEAS_TO_QUEUE", "6"))
 
 # Web server

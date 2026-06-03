@@ -683,7 +683,7 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
                 "page": "research",
                 "brief": brief,
                 "agent_ideas": agent_ideas,
-                "research_time": f"{config.WEEKLY_IDEATION_DAY.capitalize()} {config.WEEKLY_IDEATION_TIME}",
+                "research_time": f"daily at {config.IDEATION_TIME}",
                 "timezone": config.TIMEZONE,
                 "err": err,
             },
@@ -726,9 +726,9 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
             "Apify enabled": "yes" if config.APIFY_ENABLED else "no",
             "CTA URL": config.CTA_URL,
             "Post times": ", ".join(config.POST_TIMES) + f" {config.TIMEZONE}",
-            "Weekly ideation": (
-                f"{config.WEEKLY_IDEATION_DAY.capitalize()} {config.WEEKLY_IDEATION_TIME} "
-                f"{config.TIMEZONE} · {config.WEEKLY_IDEATION_COUNT} ideas"
+            "Daily ideation": (
+                f"every day at {config.IDEATION_TIME} {config.TIMEZONE} · "
+                f"{config.IDEATION_COUNT} ideas"
             ),
             "Telegram nudge after ideation": "yes" if config.NOTIFY_TELEGRAM_AFTER_IDEATION else "no",
             "DB path": config.DB_PATH,

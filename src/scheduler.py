@@ -118,25 +118,24 @@ def run_viral_refresh() -> None:
         log.exception("Viral refresh failed: %s", e)
 
 
-def run_weekly_ideation() -> None:
-    """Sunday-morning batch: scout the niche + drop N fresh ideas into Ideation.
+def run_daily_ideation() -> None:
+    """Every morning: scout the niche + drop N fresh ideas into Ideation.
 
-    Sends a Telegram nudge when done so Vishal knows the brief is waiting.
+    Sends a Telegram nudge so Vishal knows the day's batch is waiting.
     """
     import requests as _requests
 
     try:
         from .agents import orchestrator
         summary = orchestrator.run_research_pipeline(
-            refresh_signal=False,  # daily viral_refresh handles the signal
-            queue_count=config.WEEKLY_IDEATION_COUNT,
+            refresh_signal=False,  # the daily viral_refresh runs separately
+            queue_count=config.IDEATION_COUNT,
         )
-        log.info("Weekly ideation: %s ideas queued", summary["ideas_queued"])
+        log.info("Daily ideation: %s ideas queued", summary["ideas_queued"])
     except Exception as e:
-        log.exception("Weekly ideation pipeline failed: %s", e)
+        log.exception("Daily ideation pipeline failed: %s", e)
         return
 
-    # Telegram nudge so you know the brief is ready.
     if not config.NOTIFY_TELEGRAM_AFTER_IDEATION:
         return
     try:
@@ -146,8 +145,8 @@ def run_weekly_ideation() -> None:
             f"  [{i.get('score')}] {i.get('hook','')[:100]}" for i in top[:3]
         )
         text = (
-            f"🗓 Sunday Brief\n\n"
-            f"{n} fresh ideas in Ideation. Top three:\n\n"
+            f"🌅 Daily Brief\n\n"
+            f"{n} fresh ideas in Ideation. Top picks:\n\n"
             f"{teaser}\n\n"
             f"Open the app to draft + approve."
         )
@@ -189,24 +188,19 @@ def build_scheduler() -> AsyncIOScheduler:
         )
         log.info("Scheduled viral refresh at %02d:%s %s", refresh_hh, first_mm, config.TIMEZONE)
 
-    # Weekly ideation cadence — Sunday morning by default. One bigger drop per week
-    # is cleaner than seven small daily drops.
-    if config.WEEKLY_IDEATION_DAY and config.WEEKLY_IDEATION_TIME:
-        w_hh, w_mm = config.WEEKLY_IDEATION_TIME.split(":")
+    # Daily ideation cadence — every morning a fresh batch lands in Ideation.
+    if config.IDEATION_TIME:
+        d_hh, d_mm = config.IDEATION_TIME.split(":")
         sched.add_job(
-            run_weekly_ideation,
-            CronTrigger(
-                day_of_week=config.WEEKLY_IDEATION_DAY,
-                hour=int(w_hh), minute=int(w_mm), timezone=tz,
-            ),
-            id="weekly_ideation",
+            run_daily_ideation,
+            CronTrigger(hour=int(d_hh), minute=int(d_mm), timezone=tz),
+            id="daily_ideation",
             replace_existing=True,
-            misfire_grace_time=3600 * 6,
+            misfire_grace_time=3600,
         )
         log.info(
-            "Scheduled weekly ideation: %s at %s %s (%d ideas/run)",
-            config.WEEKLY_IDEATION_DAY, config.WEEKLY_IDEATION_TIME,
-            config.TIMEZONE, config.WEEKLY_IDEATION_COUNT,
+            "Scheduled daily ideation at %s %s (%d ideas/run)",
+            config.IDEATION_TIME, config.TIMEZONE, config.IDEATION_COUNT,
         )
 
     return sched
