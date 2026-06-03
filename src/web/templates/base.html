@@ -66,12 +66,12 @@
 
   <main class="main">
     <div class="container">
+{% endif %}
       {% block content %}{% endblock %}
+{% if request.session.get('authed') %}
     </div>
   </main>
 </div>
-{% else %}
-{% block content %}{% endblock %}
 {% endif %}
 </body>
 </html>

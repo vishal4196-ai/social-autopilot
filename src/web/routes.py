@@ -108,22 +108,11 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
 
     @app.get("/login", response_class=HTMLResponse)
     async def get_login(request: Request, msg: str = ""):
-        try:
-            if auth.is_authed(request):
-                return RedirectResponse(url="/", status_code=303)
-            return templates.TemplateResponse(
-                request, "login.html", {"msg": msg, "msg_ok": False}
-            )
-        except Exception as e:
-            import traceback
-            log.exception("login render failed")
-            return HTMLResponse(
-                "<pre style='font:13px/1.4 monospace; padding:20px; color:#b00; "
-                "background:#fff5f5'>"
-                + traceback.format_exc().replace("<", "&lt;")
-                + "</pre>",
-                status_code=500,
-            )
+        if auth.is_authed(request):
+            return RedirectResponse(url="/", status_code=303)
+        return templates.TemplateResponse(
+            request, "login.html", {"msg": msg, "msg_ok": False}
+        )
 
     @app.post("/login", response_class=HTMLResponse)
     async def post_login(
