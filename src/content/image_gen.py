@@ -176,6 +176,48 @@ class ImageResult:
     full_path: str  # absolute path on disk
 
 
+def auto_headline(idea_text: str, linkedin_text: str = "", meta: dict | None = None) -> tuple[str, str, str]:
+    """Pick the punchiest line for the image, with zero user input.
+
+    Returns (overline, headline, subline). Strategy:
+      1. If the idea has structured meta (ideator output) with a hook, use it.
+      2. Otherwise extract the first short, number-heavy sentence from the
+         LinkedIn variant.
+      3. Fallback: first 2 sentences of the post.
+    """
+    overline = "UPLIFTAI · CASE STUDY"
+    if meta and isinstance(meta, dict):
+        hook = (meta.get("hook") or "").strip()
+        fmt = (meta.get("format") or "").strip()
+        if hook:
+            overline = f"UPLIFTAI · {fmt.upper()}" if fmt else "UPLIFTAI"
+            # Split the hook at the first period for headline/subline
+            parts = re.split(r"(?<=[.!?])\s+", hook, maxsplit=1)
+            headline = parts[0].strip().rstrip(".!?")
+            subline = parts[1].strip() if len(parts) > 1 else ""
+            if len(headline) > 80 and subline == "":
+                # Long headline: split at midpoint comma
+                if "," in headline:
+                    cut = headline.rfind(",", 0, 80)
+                    if cut > 20:
+                        subline = headline[cut + 1:].strip()
+                        headline = headline[:cut].strip()
+            return overline, headline[:90], subline[:120]
+
+    src = (linkedin_text or idea_text or "").strip()
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", src) if s.strip()]
+    # Prefer first sentence with a digit (number-heavy hooks rank highest)
+    headline = ""
+    for s in sentences[:3]:
+        if re.search(r"\d", s) and len(s) <= 110:
+            headline = s.rstrip(".!?")
+            break
+    if not headline and sentences:
+        headline = sentences[0].rstrip(".!?")
+    subline = sentences[1].rstrip(".!?") if len(sentences) > 1 else ""
+    return overline, headline[:90], subline[:120]
+
+
 def generate_post_image(
     headline: str,
     subline: str | None = None,

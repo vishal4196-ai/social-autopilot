@@ -19,42 +19,19 @@
       <span>VISHAL<span class="dot">.</span>AI</span>
     </div>
 
-    <div class="sidebar-section">Workspace</div>
-    <ul class="sidebar-nav">
-      <li><a href="/" class="{% if page == 'overview' %}active{% endif %}">
-        <span class="nav-icon">◰</span>Overview
-      </a></li>
-    </ul>
-
-    <div class="sidebar-section">Content pipeline</div>
-    <ul class="sidebar-nav">
-      <li><a href="/ideation" class="{% if page == 'ideation' %}active{% endif %}">
-        <span class="nav-icon">✦</span>Ideation
-        {% if nav_counts and nav_counts.ideation %}<span class="nav-badge">{{ nav_counts.ideation }}</span>{% endif %}
-      </a></li>
-      <li><a href="/research" class="{% if page == 'research' %}active{% endif %}">
-        <span class="nav-icon">⌕</span>Research
-        {% if nav_counts and nav_counts.researching %}<span class="nav-badge">{{ nav_counts.researching }}</span>{% endif %}
-      </a></li>
-      <li><a href="/publisher" class="{% if page == 'publisher' %}active{% endif %}">
-        <span class="nav-icon">✎</span>Publisher
-        {% if nav_counts and nav_counts.drafted %}<span class="nav-badge">{{ nav_counts.drafted }}</span>{% endif %}
+    <ul class="sidebar-nav" style="margin-top: 14px;">
+      <li><a href="/today" class="{% if page == 'today' %}active{% endif %}">
+        <span class="nav-icon">⌂</span>Today
+        {% set today_count = (nav_counts.ideation if nav_counts else 0) + (nav_counts.drafted if nav_counts else 0) %}
+        {% if today_count %}<span class="nav-badge">{{ today_count }}</span>{% endif %}
       </a></li>
       <li><a href="/launch" class="{% if page == 'launch' %}active{% endif %}">
         <span class="nav-icon">▶</span>Launch
         {% if nav_counts and nav_counts.approved %}<span class="nav-badge">{{ nav_counts.approved }}</span>{% endif %}
       </a></li>
-    </ul>
-
-    <div class="sidebar-section">Sources</div>
-    <ul class="sidebar-nav">
       <li><a href="/creators" class="{% if page == 'creators' %}active{% endif %}">
         <span class="nav-icon">◉</span>Creators
       </a></li>
-    </ul>
-
-    <div class="sidebar-section">Account</div>
-    <ul class="sidebar-nav">
       <li><a href="/settings" class="{% if page == 'settings' %}active{% endif %}">
         <span class="nav-icon">⚙</span>Settings
       </a></li>

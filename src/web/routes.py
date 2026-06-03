@@ -140,51 +140,58 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
     async def healthz():
         return {"ok": True, "service": "vishal-ai-web"}
 
-    # ─── Overview (dashboard) ────────────────────────────
+    # ─── Today (the daily ritual: see + draft + approve) ─
 
     @app.get("/", response_class=HTMLResponse)
-    async def overview(request: Request):
+    @app.get("/today", response_class=HTMLResponse)
+    async def today_get(request: Request):
         if r := _require_auth(request):
             return r
+        import json as _json
         nav = _nav_counts()
-        posts = db.recent_posts(limit=5)
+        # Fresh ideas (ideation phase), AI first then user
+        ideation_all = db.list_by_phase("ideation", limit=200)
+        ai_fresh = [i for i in ideation_all if i["source"] == "research_agent"]
+        my_fresh = [i for i in ideation_all if i["source"] != "research_agent"]
+        # Drafted (awaiting approval), parse drafts JSON
+        drafted_rows = db.list_by_phase("drafted", limit=200)
+        drafted = []
+        for row in drafted_rows:
+            try:
+                d = _json.loads(row["drafts"]) if row["drafts"] else {}
+            except (ValueError, TypeError):
+                d = {}
+            try:
+                meta = _json.loads(row["meta"]) if row["meta"] else {}
+            except (ValueError, TypeError):
+                meta = {}
+            drafted.append({"row": row, "drafts": d, "meta": meta})
+        # Next scheduled slot summary
         return templates.TemplateResponse(
-            request, "overview.html",
+            request, "today.html",
             _ctx({
-                "page": "overview",
+                "page": "today",
                 "nav_counts": nav,
-                "ideation_count": nav["ideation"],
-                "researching_count": nav["researching"],
-                "drafted_count": nav["drafted"],
+                "ai_fresh": ai_fresh,
+                "my_fresh": my_fresh,
+                "drafted": drafted,
                 "approved_count": nav["approved"],
-                "posts_count": len(db.recent_posts(limit=1000)),
-                "creators_count": len(db.list_creators()),
-                "recent_posts": posts,
                 "next_slot": _next_scheduled_slot(),
-                "apify_on": config.APIFY_ENABLED,
                 "post_times": config.POST_TIMES,
                 "timezone": config.TIMEZONE,
                 "_t": _truncate,
             }),
         )
 
-    # ─── Ideation ─────────────────────────────────────────
+    # Old overview URL redirects to /today
+    @app.get("/overview")
+    async def overview_redirect(request: Request):
+        return RedirectResponse(url="/today", status_code=303)
 
-    @app.get("/ideation", response_class=HTMLResponse)
-    async def ideation_get(request: Request):
-        if r := _require_auth(request):
-            return r
-        all_ideation = db.list_by_phase("ideation", limit=200)
-        ai_ideas = [i for i in all_ideation if i["source"] == "research_agent"]
-        my_ideas = [i for i in all_ideation if i["source"] != "research_agent"]
-        return templates.TemplateResponse(
-            request, "ideation.html",
-            _ctx({
-                "page": "ideation",
-                "ai_ideas": ai_ideas, "my_ideas": my_ideas,
-                "_t": _truncate,
-            }),
-        )
+    # /ideation deprecated — everything happens on /today now
+    @app.get("/ideation")
+    async def ideation_redirect(request: Request):
+        return RedirectResponse(url="/today", status_code=303)
 
     @app.post("/ideation/add")
     async def ideation_add(request: Request, text: str = Form(...)):
@@ -193,55 +200,77 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
         text = (text or "").strip()
         if text:
             db.add_idea(text, source="web", phase="ideation")
-        return RedirectResponse(url="/ideation", status_code=303)
+        return RedirectResponse(url="/today", status_code=303)
 
     @app.post("/ideation/{idea_id}/draft")
     async def ideation_draft(request: Request, idea_id: int):
-        """Move an idea from ideation → drafted (Claude writes the variants)."""
+        """Generate text variants AND a branded image in one click.
+
+        Headline is auto-extracted (uses ideator's hook from meta if present,
+        else extracts the punchy line from the LinkedIn variant). The user
+        reviews the result on /today and just approves — zero typing required.
+        """
         if r := _require_auth(request):
             return r
+        import json as _json
         idea = db.get_idea(idea_id)
         if not idea:
-            return RedirectResponse(url="/ideation", status_code=303)
-        from ..content import generator
+            return RedirectResponse(url="/today", status_code=303)
+
+        from ..content import generator, image_gen
         loop = asyncio.get_running_loop()
         post_id_hint = datetime.utcnow().strftime("%Y%m%d_%H%M%S") + f"_idea{idea_id}"
+
+        # 1. Generate text variants
         try:
             variants = await loop.run_in_executor(
                 None, lambda: generator.generate(idea["text"], post_id_hint=post_id_hint)
             )
             drafts = {v.platform: v.text for v in variants}
-            db.save_drafts(idea_id, drafts)
         except Exception:
-            log.exception("draft failed for idea %d", idea_id)
-        return RedirectResponse(url="/publisher", status_code=303)
+            log.exception("text draft failed for idea %d", idea_id)
+            return RedirectResponse(url="/today", status_code=303)
+
+        # 2. Auto-extract headline + generate the branded image
+        try:
+            meta = _json.loads(idea["meta"]) if idea["meta"] else {}
+        except (ValueError, TypeError):
+            meta = {}
+        try:
+            overline, headline, subline = image_gen.auto_headline(
+                idea_text=idea["text"],
+                linkedin_text=drafts.get("linkedin", ""),
+                meta=meta,
+            )
+            img = await loop.run_in_executor(
+                None,
+                lambda: image_gen.generate_post_image(
+                    headline=headline, subline=subline, overline=overline,
+                    topic_hint=idea["text"][:200],
+                ),
+            )
+            # Build public URL the schedulers / Postsyncer will use
+            scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+            host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost"
+            drafts["image_url"] = f"{scheme}://{host}/images/{img.filename}"
+        except Exception:
+            log.exception("image gen failed for idea %d — continuing without image", idea_id)
+            drafts["image_url"] = ""
+
+        db.save_drafts(idea_id, drafts)
+        return RedirectResponse(url="/today#draft-" + str(idea_id), status_code=303)
 
     @app.post("/ideation/{idea_id}/skip")
     async def ideation_skip(request: Request, idea_id: int):
         if r := _require_auth(request):
             return r
         db.skip_idea(idea_id)
-        return RedirectResponse(url="/ideation", status_code=303)
+        return RedirectResponse(url="/today", status_code=303)
 
-    # ─── Publisher (review drafts, approve) ──────────────
-
-    @app.get("/publisher", response_class=HTMLResponse)
-    async def publisher_get(request: Request):
-        if r := _require_auth(request):
-            return r
-        import json as _json
-        drafts = db.list_by_phase("drafted", limit=200)
-        parsed = []
-        for row in drafts:
-            try:
-                d = _json.loads(row["drafts"]) if row["drafts"] else {}
-            except (ValueError, TypeError):
-                d = {}
-            parsed.append({"row": row, "drafts": d})
-        return templates.TemplateResponse(
-            request, "publisher.html",
-            _ctx({"page": "publisher", "drafts": parsed, "_t": _truncate}),
-        )
+    # /publisher deprecated — folded into /today
+    @app.get("/publisher")
+    async def publisher_redirect(request: Request):
+        return RedirectResponse(url="/today", status_code=303)
 
     @app.post("/publisher/{idea_id}/approve")
     async def publisher_approve(
@@ -267,21 +296,21 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
                 "UPDATE ideas SET drafts=?, phase='approved', approved_at=? WHERE id=?",
                 (_json.dumps(drafts), datetime.utcnow().isoformat(), idea_id),
             )
-        return RedirectResponse(url="/publisher", status_code=303)
+        return RedirectResponse(url="/today", status_code=303)
 
     @app.post("/publisher/{idea_id}/back")
     async def publisher_back(request: Request, idea_id: int):
         if r := _require_auth(request):
             return r
         db.set_phase(idea_id, "ideation")
-        return RedirectResponse(url="/publisher", status_code=303)
+        return RedirectResponse(url="/today", status_code=303)
 
     @app.post("/publisher/{idea_id}/skip")
     async def publisher_skip(request: Request, idea_id: int):
         if r := _require_auth(request):
             return r
         db.skip_idea(idea_id)
-        return RedirectResponse(url="/publisher", status_code=303)
+        return RedirectResponse(url="/today", status_code=303)
 
     # /posts kept as redirect to /launch for backwards compat
     @app.get("/posts")
@@ -474,15 +503,10 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
 
     # ─── Compose: draft → preview → publish/queue/regenerate ──
 
-    @app.get("/compose", response_class=HTMLResponse)
-    async def compose_get(request: Request):
-        if r := _require_auth(request):
-            return r
-        return templates.TemplateResponse(
-            request,
-            "compose.html",
-            {"page": "compose", "draft": None, "idea_text": ""},
-        )
+    # /compose deprecated — replaced by /today which auto-drafts text + image
+    @app.get("/compose")
+    async def compose_redirect(request: Request):
+        return RedirectResponse(url="/today", status_code=303)
 
     @app.post("/compose/draft", response_class=HTMLResponse)
     async def compose_draft(request: Request, idea: str = Form(...)):
@@ -736,16 +760,9 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
             await loop.run_in_executor(
                 None, lambda: orchestrator.run_research_pipeline(refresh_signal=True)
             )
-        except Exception as e:
+        except Exception:
             log.exception("research run failed")
-            # Surface the error so we can see it in the UI / via curl.
-            import urllib.parse, traceback
-            tb = traceback.format_exc()[-1500:]
-            return RedirectResponse(
-                url=f"/research?err={urllib.parse.quote(tb)}",
-                status_code=303,
-            )
-        return RedirectResponse(url="/research", status_code=303)
+        return RedirectResponse(url="/today", status_code=303)
 
     # ─── Settings ─────────────────────────────────────────
 

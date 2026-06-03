@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Today · Vishal AI{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1>Today</h1>
+    <div class="page-sub">Your 5-minute daily ritual. Pick the ideas you like, review the drafts, approve.</div>
+  </div>
+  <div class="page-actions">
+    <form method="post" action="/research/run" class="inline"><button class="btn">🔬 Get more ideas</button></form>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="stat">
+    <div class="stat-num">{{ (ai_fresh + my_fresh) | length }}</div>
+    <div class="stat-label">Fresh ideas</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num">{{ drafted | length }}</div>
+    <div class="stat-label">Awaiting approval</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num">{{ approved_count }}</div>
+    <div class="stat-label">Going out next</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num small">{{ next_slot }}</div>
+    <div class="stat-label">Next slot</div>
+  </div>
+</div>
+
+{# ─── SECTION 1: Drafts awaiting approval (top, most urgent) ─── #}
+{% if drafted %}
+  <h2 style="margin-top: 32px;">✎ Awaiting your approval <span class="muted" style="font-size: 14px; font-weight: 400;">· {{ drafted|length }}</span></h2>
+  <p class="muted small">Each draft is ready to ship. Edit anything, then approve to send to Launch.</p>
+
+  {% for d in drafted %}
+    <form method="post" action="/publisher/{{ d.row.id }}/approve" class="compose-form" id="draft-{{ d.row.id }}">
+      <div class="card-meta" style="margin-top: 18px;">
+        <span class="idea-id">#{{ d.row.id }}</span>
+        <span class="badge">{{ d.row.source }}</span>
+        {% if d.row.score %}<span class="badge score-badge">{{ d.row.score }}</span>{% endif %}
+        {% if d.meta.format %}<span class="badge">{{ d.meta.format }}</span>{% endif %}
+      </div>
+
+      {% if d.drafts.image_url %}
+        <div class="image-preview" style="margin: 8px 0 12px;">
+          <img src="{{ d.drafts.image_url }}" alt="post image">
+          <input type="hidden" name="image_url" value="{{ d.drafts.image_url }}">
+        </div>
+      {% else %}
+        <input type="hidden" name="image_url" value="">
+      {% endif %}
+
+      {% if d.drafts.linkedin %}
+        <div class="variant">
+          <div class="variant-head">
+            <span class="badge badge-linkedin">LinkedIn</span>
+            <span class="muted small">{{ d.drafts.linkedin | length }} chars</span>
+          </div>
+          <textarea name="linkedin_text" rows="10">{{ d.drafts.linkedin }}</textarea>
+        </div>
+      {% endif %}
+
+      {% if d.drafts.x %}
+        <div class="variant">
+          <div class="variant-head">
+            <span class="badge badge-x">X / Twitter</span>
+            <span class="muted small">{{ d.drafts.x | length }} chars</span>
+          </div>
+          <textarea name="x_text" rows="4">{{ d.drafts.x }}</textarea>
+        </div>
+      {% endif %}
+
+      {% if d.drafts.threads %}
+        <div class="variant">
+          <div class="variant-head">
+            <span class="badge badge-threads">Threads</span>
+            <span class="muted small">{{ d.drafts.threads | length }} chars</span>
+          </div>
+          <textarea name="threads_text" rows="5">{{ d.drafts.threads }}</textarea>
+        </div>
+      {% endif %}
+
+      <div class="card-actions" style="justify-content: space-between;">
+        <button type="submit" class="btn primary">✓ Approve · send to Launch</button>
+        <div>
+          <button type="submit" formaction="/publisher/{{ d.row.id }}/back" class="btn">↺ Send back to ideas</button>
+          <button type="submit" formaction="/publisher/{{ d.row.id }}/skip" class="btn danger">Kill</button>
+        </div>
+      </div>
+    </form>
+  {% endfor %}
+{% endif %}
+
+{# ─── SECTION 2: Add your own idea ─── #}
+<h2 style="margin-top: 32px;">+ Add your own idea</h2>
+<form method="post" action="/ideation/add" class="add-form">
+  <textarea name="text" rows="2" placeholder="A client win, a hot take, an angle you want to test. The agent reads your tracked creators + viral signal when it drafts."></textarea>
+  <button class="btn primary" style="align-self: flex-start;">Add to ideas</button>
+</form>
+
+{# ─── SECTION 3: Fresh ideas (AI first, then yours) ─── #}
+{% if ai_fresh or my_fresh %}
+  <h2 style="margin-top: 32px;">✦ Fresh ideas <span class="muted" style="font-size: 14px; font-weight: 400;">· {{ (ai_fresh + my_fresh)|length }}</span></h2>
+  <p class="muted small">Click ✎ Draft and the agent writes all three posts + designs an image in ~15 sec.</p>
+
+  {% for i in ai_fresh + my_fresh %}
+    <div class="card idea-card">
+      <div class="card-meta">
+        <span class="idea-id">#{{ i.id }}</span>
+        {% if i.source == 'research_agent' %}
+          <span class="badge">AI suggestion</span>
+        {% else %}
+          <span class="badge">{{ i.source }}</span>
+        {% endif %}
+        {% if i.score %}<span class="badge score-badge">{{ i.score }}</span>{% endif %}
+        <span class="muted small">{{ i.created_at[:10] }}</span>
+      </div>
+      <div class="card-text">{{ _t(i.text, 280) }}</div>
+      <div class="card-actions">
+        <form method="post" action="/ideation/{{ i.id }}/draft" class="inline">
+          <button class="btn primary small">✎ Draft</button>
+        </form>
+        <form method="post" action="/ideation/{{ i.id }}/skip" class="inline">
+          <button class="btn ghost small">Skip</button>
+        </form>
+      </div>
+    </div>
+  {% endfor %}
+{% else %}
+  <h2 style="margin-top: 32px;">✦ Fresh ideas</h2>
+  <p class="muted">No fresh ideas yet. Click <strong>🔬 Get more ideas</strong> above to ask the AI for a batch, or add your own.</p>
+{% endif %}
+
+{% endblock %}
