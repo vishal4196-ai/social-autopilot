@@ -108,11 +108,22 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
 
     @app.get("/login", response_class=HTMLResponse)
     async def get_login(request: Request, msg: str = ""):
-        if auth.is_authed(request):
-            return RedirectResponse(url="/", status_code=303)
-        return templates.TemplateResponse(
-            request, "login.html", {"msg": msg, "msg_ok": False}
-        )
+        try:
+            if auth.is_authed(request):
+                return RedirectResponse(url="/", status_code=303)
+            return templates.TemplateResponse(
+                request, "login.html", {"msg": msg, "msg_ok": False}
+            )
+        except Exception as e:
+            import traceback
+            log.exception("login render failed")
+            return HTMLResponse(
+                "<pre style='font:13px/1.4 monospace; padding:20px; color:#b00; "
+                "background:#fff5f5'>"
+                + traceback.format_exc().replace("<", "&lt;")
+                + "</pre>",
+                status_code=500,
+            )
 
     @app.post("/login", response_class=HTMLResponse)
     async def post_login(
@@ -683,7 +694,7 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
                 "page": "research",
                 "brief": brief,
                 "agent_ideas": agent_ideas,
-                "research_time": config.RESEARCH_TIME,
+                "research_time": f"{config.WEEKLY_IDEATION_DAY.capitalize()} {config.WEEKLY_IDEATION_TIME}",
                 "timezone": config.TIMEZONE,
                 "err": err,
             },
