@@ -59,10 +59,17 @@ TIMEZONE = _env("TIMEZONE", "America/Toronto")
 
 # Research agent
 RESEARCH_MODEL = _env("RESEARCH_MODEL", CLAUDE_MODEL)
-RESEARCH_TIME = _env("RESEARCH_TIME", "06:00")          # daily research run (in TIMEZONE)
-IDEAS_PER_RUN = int(_env("IDEAS_PER_RUN", "10"))         # how many ideas the ideator drafts
-IDEAS_TO_QUEUE = int(_env("IDEAS_TO_QUEUE", "4"))        # top-N auto-queued each run
 ENABLE_WEB_SEARCH = _bool("ENABLE_WEB_SEARCH", True)     # let research agent web-search trends
+IDEAS_PER_RUN = int(_env("IDEAS_PER_RUN", "18"))         # how many ideas the ideator drafts per run
+
+# Weekly ideation cadence (the main schedule now)
+WEEKLY_IDEATION_DAY = _env("WEEKLY_IDEATION_DAY", "sun").lower()  # cron day_of_week
+WEEKLY_IDEATION_TIME = _env("WEEKLY_IDEATION_TIME", "06:00")      # HH:MM in TIMEZONE
+WEEKLY_IDEATION_COUNT = int(_env("WEEKLY_IDEATION_COUNT", "15"))  # ideas auto-queued each Sunday
+NOTIFY_TELEGRAM_AFTER_IDEATION = _bool("NOTIFY_TELEGRAM_AFTER_IDEATION", True)
+
+# Legacy daily IDEAS_TO_QUEUE (only used if someone calls research manually w/o override)
+IDEAS_TO_QUEUE = int(_env("IDEAS_TO_QUEUE", "6"))
 
 # Web server
 PORT = int(_env("PORT", "8080"))

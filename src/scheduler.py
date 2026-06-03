@@ -118,15 +118,46 @@ def run_viral_refresh() -> None:
         log.exception("Viral refresh failed: %s", e)
 
 
-def run_research() -> None:
-    """Daily research pipeline: scout → ideate → queue killer ideas."""
+def run_weekly_ideation() -> None:
+    """Sunday-morning batch: scout the niche + drop N fresh ideas into Ideation.
+
+    Sends a Telegram nudge when done so Vishal knows the brief is waiting.
+    """
+    import requests as _requests
+
     try:
         from .agents import orchestrator
-        # Signal refresh happens inside the scheduled viral_refresh; don't double it.
-        summary = orchestrator.run_research_pipeline(refresh_signal=False)
-        log.info("Research pipeline: %s", summary)
+        summary = orchestrator.run_research_pipeline(
+            refresh_signal=False,  # daily viral_refresh handles the signal
+            queue_count=config.WEEKLY_IDEATION_COUNT,
+        )
+        log.info("Weekly ideation: %s ideas queued", summary["ideas_queued"])
     except Exception as e:
-        log.exception("Research pipeline failed: %s", e)
+        log.exception("Weekly ideation pipeline failed: %s", e)
+        return
+
+    # Telegram nudge so you know the brief is ready.
+    if not config.NOTIFY_TELEGRAM_AFTER_IDEATION:
+        return
+    try:
+        n = summary["ideas_queued"]
+        top = summary.get("top_ideas") or []
+        teaser = "\n".join(
+            f"  [{i.get('score')}] {i.get('hook','')[:100]}" for i in top[:3]
+        )
+        text = (
+            f"🗓 Sunday Brief\n\n"
+            f"{n} fresh ideas in Ideation. Top three:\n\n"
+            f"{teaser}\n\n"
+            f"Open the app to draft + approve."
+        )
+        _requests.post(
+            f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={"chat_id": config.TELEGRAM_ALLOWED_USER_ID, "text": text},
+            timeout=10,
+        )
+    except Exception as e:
+        log.warning("Telegram nudge failed: %s", e)
 
 
 def build_scheduler() -> AsyncIOScheduler:
@@ -158,16 +189,24 @@ def build_scheduler() -> AsyncIOScheduler:
         )
         log.info("Scheduled viral refresh at %02d:%s %s", refresh_hh, first_mm, config.TIMEZONE)
 
-    # Research pipeline once a day (scout → ideate → queue ideas)
-    if config.RESEARCH_TIME:
-        r_hh, r_mm = config.RESEARCH_TIME.split(":")
+    # Weekly ideation cadence — Sunday morning by default. One bigger drop per week
+    # is cleaner than seven small daily drops.
+    if config.WEEKLY_IDEATION_DAY and config.WEEKLY_IDEATION_TIME:
+        w_hh, w_mm = config.WEEKLY_IDEATION_TIME.split(":")
         sched.add_job(
-            run_research,
-            CronTrigger(hour=int(r_hh), minute=int(r_mm), timezone=tz),
-            id="research_pipeline",
+            run_weekly_ideation,
+            CronTrigger(
+                day_of_week=config.WEEKLY_IDEATION_DAY,
+                hour=int(w_hh), minute=int(w_mm), timezone=tz,
+            ),
+            id="weekly_ideation",
             replace_existing=True,
-            misfire_grace_time=3600,
+            misfire_grace_time=3600 * 6,
         )
-        log.info("Scheduled research pipeline at %s %s", config.RESEARCH_TIME, config.TIMEZONE)
+        log.info(
+            "Scheduled weekly ideation: %s at %s %s (%d ideas/run)",
+            config.WEEKLY_IDEATION_DAY, config.WEEKLY_IDEATION_TIME,
+            config.TIMEZONE, config.WEEKLY_IDEATION_COUNT,
+        )
 
     return sched

@@ -721,10 +721,16 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
             "Postsyncer workspace": str(config.POSTSYNCER_WORKSPACE_ID),
             "LinkedIn acct id": str(config.POSTSYNCER_LINKEDIN_ACCOUNT_ID),
             "X acct id": str(config.POSTSYNCER_X_ACCOUNT_ID),
+            "Threads acct id": str(config.POSTSYNCER_THREADS_ACCOUNT_ID),
             "Telegram allowed user": str(config.TELEGRAM_ALLOWED_USER_ID),
             "Apify enabled": "yes" if config.APIFY_ENABLED else "no",
             "CTA URL": config.CTA_URL,
             "Post times": ", ".join(config.POST_TIMES) + f" {config.TIMEZONE}",
+            "Weekly ideation": (
+                f"{config.WEEKLY_IDEATION_DAY.capitalize()} {config.WEEKLY_IDEATION_TIME} "
+                f"{config.TIMEZONE} · {config.WEEKLY_IDEATION_COUNT} ideas"
+            ),
+            "Telegram nudge after ideation": "yes" if config.NOTIFY_TELEGRAM_AFTER_IDEATION else "no",
             "DB path": config.DB_PATH,
         }
         return templates.TemplateResponse(

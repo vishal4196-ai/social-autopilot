@@ -13,8 +13,14 @@ from . import ideator, research
 log = logging.getLogger(__name__)
 
 
-def run_research_pipeline(refresh_signal: bool = True) -> dict:
+def run_research_pipeline(
+    refresh_signal: bool = True,
+    queue_count: int | None = None,
+) -> dict:
     """Full loop: (refresh) → research → ideate → queue top ideas.
+
+    queue_count overrides config.IDEAS_TO_QUEUE for this run (used by the
+    weekly cadence to drop a bigger batch).
 
     Returns a summary dict for logging / UI / Telegram replies.
     """
@@ -29,9 +35,17 @@ def run_research_pipeline(refresh_signal: bool = True) -> dict:
             log.warning("signal refresh failed (continuing): %s", e)
 
     brief = research.run_research()
-    ideas = ideator.run_ideation(brief)
+    # Temporarily override the queue count for this run, then restore.
+    original = config.IDEAS_TO_QUEUE
+    if queue_count is not None:
+        config.IDEAS_TO_QUEUE = queue_count
+    try:
+        ideas = ideator.run_ideation(brief)
+    finally:
+        config.IDEAS_TO_QUEUE = original
 
-    top = ideas[: config.IDEAS_TO_QUEUE]
+    effective_count = queue_count if queue_count is not None else original
+    top = ideas[:effective_count]
     summary = {
         "brief_summary": brief.get("summary", ""),
         "themes": brief.get("themes", [])[:5],
