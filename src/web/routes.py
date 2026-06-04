@@ -83,12 +83,17 @@ def _truncate(text: str, n: int) -> str:
 
 
 def _nav_counts() -> dict:
-    """Sidebar phase badges."""
+    """Sidebar phase badges. 'approved' here = anything waiting to publish,
+    which includes both phase='scheduled' (sent to Postsyncer, awaiting fire)
+    and phase='approved' (Postsyncer schedule failed, cron will retry)."""
     return {
         "ideation": len(db.list_by_phase("ideation", limit=999)),
         "researching": len(db.list_by_phase("researching", limit=999)),
         "drafted": len(db.list_by_phase("drafted", limit=999)),
-        "approved": len(db.list_by_phase("approved", limit=999)),
+        "approved": (
+            len(db.list_by_phase("approved", limit=999))
+            + len(db.list_by_phase("scheduled", limit=999))
+        ),
     }
 
 
@@ -281,10 +286,21 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
         threads_text: str = Form(""),
         image_url: str = Form(""),
     ):
-        """User-edited drafts go back into DB, phase → approved."""
+        """Save edits → immediately schedule each platform in Postsyncer for
+        the next available slot. Postsyncer becomes the system of record;
+        Vishal sees the post in Postsyncer's calendar right away.
+
+        Phase transitions:
+          drafted → approved (transient: edits saved, about to schedule)
+                  → scheduled (success on >=1 platform)
+                  → approved   (all platforms failed — cron will retry)
+        """
         if r := _require_auth(request):
             return r
         import json as _json
+        from ..publishers import postsyncer
+
+        # ── 1. Save edits + set phase to 'approved' transiently ──────
         drafts = {
             "linkedin": linkedin_text.strip(),
             "x": x_text.strip(),
@@ -296,6 +312,89 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
                 "UPDATE ideas SET drafts=?, phase='approved', approved_at=? WHERE id=?",
                 (_json.dumps(drafts), datetime.utcnow().isoformat(), idea_id),
             )
+
+        # ── 2. Compute this idea's slot index ───────────────────────
+        # Count other ideas already approved/scheduled (waiting to publish).
+        # The new one's slot = next slot AFTER all of those.
+        tz = ZoneInfo(config.TIMEZONE)
+        now = datetime.now(tz)
+        others = [
+            i for i in (db.list_by_phase("approved") + db.list_by_phase("scheduled"))
+            if i["id"] != idea_id
+        ]
+        slot_index = len(others)
+
+        # Generate enough upcoming slots
+        slots: list[datetime] = []
+        day_cursor = now.date()
+        for _ in range(60):  # up to 60 days
+            for slot_str in config.POST_TIMES:
+                hh, mm = slot_str.split(":")
+                slot_dt = datetime(
+                    day_cursor.year, day_cursor.month, day_cursor.day,
+                    int(hh), int(mm), tzinfo=tz,
+                )
+                if slot_dt > now:
+                    slots.append(slot_dt)
+            if len(slots) > slot_index:
+                break
+            day_cursor = day_cursor + timedelta(days=1)
+
+        if not slots or len(slots) <= slot_index:
+            log.error("Could not compute upcoming slot for idea #%d", idea_id)
+            return RedirectResponse(url="/today", status_code=303)
+
+        my_slot = slots[slot_index]
+        schedule_for = {
+            "date": my_slot.strftime("%Y-%m-%d"),
+            "time": my_slot.strftime("%H:%M"),
+            "timezone": config.TIMEZONE,
+        }
+        schedule_iso = f"{schedule_for['date']}T{schedule_for['time']}:00"
+        log.info(
+            "Approving idea #%d → slot %d → %s %s %s",
+            idea_id, slot_index, schedule_for["date"], schedule_for["time"], config.TIMEZONE,
+        )
+
+        # ── 3. Schedule each platform in Postsyncer ──────────────────
+        loop = asyncio.get_running_loop()
+        any_success = False
+        media = [image_url.strip()] if image_url.strip() else None
+        for platform_key, text in (
+            ("linkedin", linkedin_text.strip()),
+            ("x", x_text.strip()),
+            ("threads", threads_text.strip()),
+        ):
+            if not text:
+                continue
+            try:
+                resp = await loop.run_in_executor(
+                    None, lambda p=platform_key, t=text: postsyncer.publish(
+                        platform=p, text=t,
+                        schedule_for=schedule_for, media_urls=media,
+                    ),
+                )
+                ps_id = str(resp.get("data", {}).get("id") or resp.get("id") or "")
+                db.log_post(
+                    idea_id=idea_id, platform=platform_key, text=text,
+                    cta_url="", status="scheduled",
+                    postsyncer_post_id=ps_id, scheduled_for=schedule_iso,
+                )
+                any_success = True
+                log.info("Scheduled %s for idea #%d → postsyncer_id=%s", platform_key, idea_id, ps_id)
+            except Exception as e:
+                log.exception("Postsyncer schedule failed: idea=%d platform=%s", idea_id, platform_key)
+                db.log_post(
+                    idea_id=idea_id, platform=platform_key, text=text,
+                    cta_url="", status="failed", scheduled_for=schedule_iso,
+                    error=str(e)[:500],
+                )
+
+        # ── 4. Phase update ──────────────────────────────────────────
+        if any_success:
+            db.set_phase(idea_id, "scheduled")
+        # else: leave at 'approved' — the cron will retry at the next slot.
+
         return RedirectResponse(url="/today", status_code=303)
 
     @app.post("/publisher/{idea_id}/back")
@@ -391,7 +490,8 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
                 "status": p["status"],
             })
 
-        # 2. Approved-but-pending ideas → place on upcoming scheduled slots
+        # 2. approved-but-Postsyncer-failed ideas → placeholder slots
+        # (Successfully scheduled ones already appear via posts table above.)
         approved = list(db.list_by_phase("approved", limit=200))
         # Oldest-approved first (matches scheduler pick order)
         approved.sort(key=lambda r: r["approved_at"] or r["created_at"])
@@ -685,6 +785,93 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
             f'  <div class="muted small">Image generated. Click Publish to attach it.</div>'
             f'</div>'
         )
+
+    # ─── Backfill: schedule already-approved ideas in Postsyncer ──
+
+    @app.post("/actions/sync_to_postsyncer")
+    async def sync_to_postsyncer(request: Request):
+        """Schedule every phase='approved' idea (no posts row yet) in
+        Postsyncer. Use this once after deploy to push pre-existing approvals
+        into Postsyncer's calendar."""
+        if r := _require_auth(request):
+            return r
+        import json as _json
+        from ..publishers import postsyncer
+
+        tz = ZoneInfo(config.TIMEZONE)
+        now = datetime.now(tz)
+        pending = sorted(
+            db.list_by_phase("approved", limit=100),
+            key=lambda r: r["approved_at"] or r["created_at"],
+        )
+
+        # Generate slot calendar once
+        slots: list[datetime] = []
+        day_cursor = now.date()
+        for _ in range(60):
+            for slot_str in config.POST_TIMES:
+                hh, mm = slot_str.split(":")
+                slot_dt = datetime(
+                    day_cursor.year, day_cursor.month, day_cursor.day,
+                    int(hh), int(mm), tzinfo=tz,
+                )
+                if slot_dt > now:
+                    slots.append(slot_dt)
+            if len(slots) >= len(pending):
+                break
+            day_cursor = day_cursor + timedelta(days=1)
+
+        loop = asyncio.get_running_loop()
+        results = []
+        for idx, idea in enumerate(pending):
+            if idx >= len(slots):
+                break
+            slot = slots[idx]
+            schedule_for = {
+                "date": slot.strftime("%Y-%m-%d"),
+                "time": slot.strftime("%H:%M"),
+                "timezone": config.TIMEZONE,
+            }
+            schedule_iso = f"{schedule_for['date']}T{schedule_for['time']}:00"
+            try:
+                drafts_d = _json.loads(idea["drafts"]) if idea["drafts"] else {}
+            except (ValueError, TypeError):
+                drafts_d = {}
+            media = [drafts_d.get("image_url")] if drafts_d.get("image_url") else None
+            any_ok = False
+            for platform_key in ("linkedin", "x", "threads"):
+                text = (drafts_d.get(platform_key) or "").strip()
+                if not text:
+                    continue
+                try:
+                    resp = await loop.run_in_executor(
+                        None,
+                        lambda p=platform_key, t=text: postsyncer.publish(
+                            platform=p, text=t,
+                            schedule_for=schedule_for, media_urls=media,
+                        ),
+                    )
+                    ps_id = str(resp.get("data", {}).get("id") or resp.get("id") or "")
+                    db.log_post(
+                        idea_id=idea["id"], platform=platform_key, text=text,
+                        cta_url="", status="scheduled",
+                        postsyncer_post_id=ps_id, scheduled_for=schedule_iso,
+                    )
+                    any_ok = True
+                except Exception as e:
+                    log.exception("backfill schedule failed: idea=%d platform=%s", idea["id"], platform_key)
+                    db.log_post(
+                        idea_id=idea["id"], platform=platform_key, text=text,
+                        cta_url="", status="failed", scheduled_for=schedule_iso,
+                        error=str(e)[:500],
+                    )
+            if any_ok:
+                db.set_phase(idea["id"], "scheduled")
+                results.append((idea["id"], "scheduled", slot.isoformat()))
+            else:
+                results.append((idea["id"], "failed", slot.isoformat()))
+        log.info("Backfill scheduled %d ideas: %s", len(results), results)
+        return RedirectResponse(url="/launch", status_code=303)
 
     # ─── Manual triggers (post_now, refresh) ──────────────
 
