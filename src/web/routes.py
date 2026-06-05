@@ -149,7 +149,7 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
 
     @app.get("/", response_class=HTMLResponse)
     @app.get("/today", response_class=HTMLResponse)
-    async def today_get(request: Request):
+    async def today_get(request: Request, err: str = ""):
         if r := _require_auth(request):
             return r
         import json as _json
@@ -185,6 +185,7 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
                 "post_times": config.POST_TIMES,
                 "timezone": config.TIMEZONE,
                 "_t": _truncate,
+                "err": err,
             }),
         )
 
@@ -942,6 +943,7 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
         if r := _require_auth(request):
             return r
         from ..agents import orchestrator
+        import traceback as _tb, urllib.parse as _up
         loop = asyncio.get_running_loop()
         try:
             await loop.run_in_executor(
@@ -949,6 +951,10 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
             )
         except Exception:
             log.exception("research run failed")
+            tb = _tb.format_exc()[-1800:]
+            return RedirectResponse(
+                url=f"/today?err={_up.quote(tb)}", status_code=303,
+            )
         return RedirectResponse(url="/today", status_code=303)
 
     # ─── Settings ─────────────────────────────────────────

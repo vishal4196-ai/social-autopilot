@@ -2,6 +2,13 @@
 {% block title %}Today · Vishal AI{% endblock %}
 {% block content %}
 
+{% if err %}
+  <div class="banner warn">
+    <strong>Last run failed:</strong>
+    <pre style="white-space: pre-wrap; font-size: 11.5px; margin: 6px 0 0;">{{ err }}</pre>
+  </div>
+{% endif %}
+
 <div class="page-header">
   <div>
     <h1>Today</h1>
