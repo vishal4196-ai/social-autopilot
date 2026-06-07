@@ -76,12 +76,14 @@ viral_discovery:
 
 generation:
   posts_per_day: 3
-  variants_per_idea: 3   # LinkedIn (long) + X (short) + Threads (medium)
+  variants_per_idea: 3   # LinkedIn (long) + X (single or thread) + Threads (single or chain)
   linkedin_target_chars: 1200
-  # X total = body + "\n\n" + URL (~23 chars on t.co). Keep body ≤240 to stay under 280.
-  x_target_chars: 240
-  # Threads cap is 500 chars per post — leave headroom for the URL.
-  threads_target_chars: 450
+  # X: write either a punchy single tweet (~240 chars) OR a thread-worthy
+  # longer piece. The publisher auto-splits at sentence boundaries into
+  # ≤270-char tweets. Target = "what's the right length for the idea?".
+  x_target_chars: 800
+  # Threads (Meta): can be single or chained. Auto-split at ≤480 chars per post.
+  threads_target_chars: 1200
   hashtags_linkedin: 3
   hashtags_x: 2
   hashtags_threads: 1

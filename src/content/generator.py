@@ -97,10 +97,15 @@ platform — NOT the same post truncated.
 PLATFORM TUNING
 - LinkedIn (~{int(config.BRAND_CONFIG['generation']['linkedin_target_chars'])} chars): long-form, line breaks every
   1-3 sentences for scannability, story-driven, professional but not stiff.
-- X (≤{int(config.BRAND_CONFIG['generation']['x_target_chars'])} chars): punchy, single hook + payoff, terse, build-in-public energy.
-- Threads (≤{int(config.BRAND_CONFIG['generation']['threads_target_chars'])} chars): conversational, more personal than X, less
-  formal than LinkedIn. Threads readers tune in for thoughts/observations,
-  not pitches. Cleaner punctuation than X (no twitter-style abbreviations).
+- X: write whichever length the idea deserves — either a punchy SINGLE TWEET
+  (~240 chars) OR a coherent THREAD (multiple tweets making sense on their own
+  when read in order). The system AUTO-SPLITS your X text at sentence
+  boundaries into ≤270-char tweets and posts as a real Twitter thread.
+  When writing a thread: each sentence-block should be self-contained, no
+  cliffhangers, no "..." trailing off. Punchline lands in the last tweet.
+- Threads (Meta): same — single post or 2-4 part chain. Conversational, more
+  personal than X, cleaner than Twitter. The publisher auto-chains long
+  Threads posts the same way.
 
 ═══════════════════════════════════════════════════════════════
 CALL-TO-ACTION POLICY (be RUTHLESS about this)
@@ -165,12 +170,12 @@ HARD RULES
 - Lead with a SPECIFIC, concrete hook. Number, contradiction, story, or claim.
   Never start with "In today's..." or "As an AI agency...".
 - One emoji max per post, only if it earns its keep. Default: zero.
-- X length: body MUST be ≤{int(config.BRAND_CONFIG['generation']['x_target_chars'])} characters
-  AND must end on a complete sentence (period, question mark, or exclamation
-  mark). If your draft is over budget, REWRITE it shorter, don't trail off
-  with "...". Posts that get cut mid-thought tank engagement.
-- Threads length: body ≤{int(config.BRAND_CONFIG['generation']['threads_target_chars'])} characters,
-  same rule: end on a complete sentence.
+- X length: up to ~{int(config.BRAND_CONFIG['generation']['x_target_chars'])} chars total. The publisher
+  splits at sentence boundaries into ≤270-char tweets and posts as a thread.
+  RULE: each sentence-block must stand on its own (no "..." cliffhangers,
+  no mid-thought trails). Punchline lands in the last sentence.
+- Threads length: up to ~{int(config.BRAND_CONFIG['generation']['threads_target_chars'])} chars; auto-chained
+  the same way.
 - LinkedIn length: aim for {int(config.BRAND_CONFIG['generation']['linkedin_target_chars'])} chars,
   with line breaks every 1-3 sentences for scannability.
 
@@ -354,9 +359,6 @@ def generate(idea_text: str, *, post_id_hint: str) -> list[GeneratedPost]:
     )
     data = _extract_json(raw)
 
-    x_max_body = int(config.BRAND_CONFIG["generation"]["x_target_chars"])
-    threads_max_body = int(config.BRAND_CONFIG["generation"]["threads_target_chars"])
-
     # Programmatic CTA budget: if any of the last N cycles included a CTA,
     # strip {{CTA}} from THIS cycle regardless of what Claude wants.
     cycles_with_cta = db.recent_cycles_with_cta(cycles=CTA_BUDGET_WINDOW_CYCLES)
@@ -386,31 +388,8 @@ def generate(idea_text: str, *, post_id_hint: str) -> list[GeneratedPost]:
         if has_cta:
             body = body.replace(CTA_TOKEN, cta_url)
 
-        # Length safety net for X (cap 280) and Threads (cap 500) using a
-        # smart truncator that respects sentence + word boundaries.
-        if platform_key in ("x", "threads"):
-            limit = x_max_body if platform_key == "x" else threads_max_body
-            # URLs render as ~23 chars on X (t.co). Account for that when
-            # measuring effective length; otherwise we truncate too aggressively.
-            url_real = len(cta_url) if cta_url else 0
-            url_effective = 23 if cta_url else 0
-            effective_len = len(body) - url_real + url_effective
-            if effective_len > limit:
-                if cta_url and cta_url in body:
-                    # Trim the body portion only; leave the URL intact.
-                    before, _, after = body.partition(cta_url)
-                    # How many chars can the "before" block be? Need:
-                    #   len(new_before) + 23 (url) + len(after) <= limit
-                    target_before = limit - url_effective - len(after) - 2
-                    if target_before > 40:
-                        before = _smart_truncate(before, target_before) + " "
-                    body = before + cta_url + after
-                else:
-                    body = _smart_truncate(body, limit)
-                log.info(
-                    "%s body smart-truncated: %d -> %d chars",
-                    platform_key, effective_len, len(body) - url_real + url_effective,
-                )
+        # No more destructive truncation. Postsyncer's publisher auto-splits
+        # long X/Threads content into a real thread at sentence boundaries.
 
         results.append(GeneratedPost(
             platform=platform_key,
