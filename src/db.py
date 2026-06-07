@@ -138,12 +138,15 @@ def add_idea(
     meta: dict | None = None,
     phase: str | None = None,
 ) -> int:
-    """Add an idea. Default phase depends on source:
-      - User-supplied (telegram/web/url_remix) → 'approved' (they already chose it)
-      - AI-suggested (research_agent) → 'ideation' (needs user picking)
+    """Add an idea. Default phase: every source goes to 'ideation' so the
+    user reviews + drafts + approves via the web /today page. One unified
+    approval gate, no surprise auto-publishing.
+
+    The Telegram "/post_now" command bypasses this (calls the scheduler
+    cycle directly), so the fast-lane still exists for explicit asks.
     """
     if phase is None:
-        phase = "approved" if source in ("telegram", "web", "url_remix") else "ideation"
+        phase = "ideation"
     with get_conn() as c:
         cur = c.execute(
             """INSERT INTO ideas (text, source, score, meta, phase, status, created_at)
