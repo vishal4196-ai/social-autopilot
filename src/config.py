@@ -59,6 +59,8 @@ TIMEZONE = _env("TIMEZONE", "America/Toronto")
 
 # Research agent
 RESEARCH_MODEL = _env("RESEARCH_MODEL", CLAUDE_MODEL)
+# Conversational chat agent for Telegram (Sonnet sweet spot for tool use)
+CONVERSATION_MODEL = _env("CONVERSATION_MODEL", "claude-sonnet-4-7")
 ENABLE_WEB_SEARCH = _bool("ENABLE_WEB_SEARCH", True)     # let research agent web-search trends
 IDEAS_PER_RUN = int(_env("IDEAS_PER_RUN", "12"))         # how many ideas the ideator drafts per run
 
