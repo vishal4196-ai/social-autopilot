@@ -25,6 +25,9 @@
         {% set today_count = (nav_counts.ideation if nav_counts else 0) + (nav_counts.drafted if nav_counts else 0) %}
         {% if today_count %}<span class="nav-badge">{{ today_count }}</span>{% endif %}
       </a></li>
+      <li><a href="/chat" class="{% if page == 'chat' %}active{% endif %}">
+        <span class="nav-icon">💬</span>Chat
+      </a></li>
       <li><a href="/launch" class="{% if page == 'launch' %}active{% endif %}">
         <span class="nav-icon">▶</span>Launch
         {% if nav_counts and nav_counts.approved %}<span class="nav-badge">{{ nav_counts.approved }}</span>{% endif %}

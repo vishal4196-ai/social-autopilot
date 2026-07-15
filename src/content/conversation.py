@@ -60,7 +60,12 @@ When Vishal:
 - Asks what's going on / queue / pipeline: call list_pipeline.
 - Wants to see recent posts: call recent_posts.
 - Wants to track / drop a creator: call follow_creator / unfollow_creator.
-- Pastes a LinkedIn or X URL: call remix_url with it.
+- Pastes a LinkedIn or X URL of a post he likes: call remix_url with it,
+  then IMMEDIATELY call draft_idea with the returned idea id (he shares
+  links because he wants a draft, not just a bookmark). Tell him it's
+  waiting for his approval on the Today page.
+- Wants an existing idea written up ("draft #14", "write that one up"):
+  call draft_idea with the id.
 - Says "post now" / "fire it" / "publish": call post_now.
 - Asks a question about the system or content strategy: ANSWER DIRECTLY
   without tools, like a real conversation.
@@ -206,6 +211,20 @@ TOOLS = [
         ),
         "input_schema": {"type": "object", "properties": {}},
     },
+    {
+        "name": "draft_idea",
+        "description": (
+            "Draft an idea NOW: generates the LinkedIn + X + Threads variants "
+            "AND a branded image, moves it to 'awaiting approval' on the Today "
+            "page. Takes ~20 sec. Use after remix_url or add_idea when Vishal "
+            "wants it written up."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"idea_id": {"type": "integer"}},
+            "required": ["idea_id"],
+        },
+    },
 ]
 
 
@@ -340,6 +359,24 @@ def _tool_remix_url(url: str, note: str | None = None) -> str:
         return f"Remix errored: {e}"
 
 
+def _tool_draft_idea(idea_id: int) -> str:
+    try:
+        from . import drafting
+        drafts = drafting.draft_idea(idea_id)
+        parts = []
+        for k in ("linkedin", "x", "threads"):
+            if drafts.get(k):
+                parts.append(f"{k} {len(drafts[k])} chars")
+        img = "with branded image" if drafts.get("image_url") else "no image"
+        return (
+            f"Drafted idea #{idea_id} ({', '.join(parts)}; {img}). "
+            f"It's now awaiting approval on the Today page."
+        )
+    except Exception as e:
+        log.exception("draft_idea tool failed")
+        return f"Draft failed: {e}"
+
+
 def _tool_post_now() -> str:
     approved = len(db.list_by_phase("approved", limit=1))
     if approved == 0:
@@ -366,6 +403,7 @@ _DISPATCH: dict[str, Callable[..., str]] = {
     "run_research": _tool_run_research,
     "remix_url": _tool_remix_url,
     "post_now": _tool_post_now,
+    "draft_idea": _tool_draft_idea,
 }
 
 

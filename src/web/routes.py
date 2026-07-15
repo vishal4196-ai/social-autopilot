@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from .. import config, db
@@ -210,60 +210,19 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
 
     @app.post("/ideation/{idea_id}/draft")
     async def ideation_draft(request: Request, idea_id: int):
-        """Generate text variants AND a branded image in one click.
-
-        Headline is auto-extracted (uses ideator's hook from meta if present,
-        else extracts the punchy line from the LinkedIn variant). The user
-        reviews the result on /today and just approves — zero typing required.
-        """
+        """Generate text variants AND a branded image in one click."""
         if r := _require_auth(request):
             return r
-        import json as _json
-        idea = db.get_idea(idea_id)
-        if not idea:
-            return RedirectResponse(url="/today", status_code=303)
-
-        from ..content import generator, image_gen
+        from ..content import drafting
+        scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost"
         loop = asyncio.get_running_loop()
-        post_id_hint = datetime.utcnow().strftime("%Y%m%d_%H%M%S") + f"_idea{idea_id}"
-
-        # 1. Generate text variants
         try:
-            variants = await loop.run_in_executor(
-                None, lambda: generator.generate(idea["text"], post_id_hint=post_id_hint)
+            await loop.run_in_executor(
+                None, lambda: drafting.draft_idea(idea_id, base_url=f"{scheme}://{host}")
             )
-            drafts = {v.platform: v.text for v in variants}
         except Exception:
-            log.exception("text draft failed for idea %d", idea_id)
-            return RedirectResponse(url="/today", status_code=303)
-
-        # 2. Auto-extract headline + generate the branded image
-        try:
-            meta = _json.loads(idea["meta"]) if idea["meta"] else {}
-        except (ValueError, TypeError):
-            meta = {}
-        try:
-            overline, headline, subline = image_gen.auto_headline(
-                idea_text=idea["text"],
-                linkedin_text=drafts.get("linkedin", ""),
-                meta=meta,
-            )
-            img = await loop.run_in_executor(
-                None,
-                lambda: image_gen.generate_post_image(
-                    headline=headline, subline=subline, overline=overline,
-                    topic_hint=idea["text"][:200],
-                ),
-            )
-            # Build public URL the schedulers / Postsyncer will use
-            scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
-            host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost"
-            drafts["image_url"] = f"{scheme}://{host}/images/{img.filename}"
-        except Exception:
-            log.exception("image gen failed for idea %d — continuing without image", idea_id)
-            drafts["image_url"] = ""
-
-        db.save_drafts(idea_id, drafts)
+            log.exception("draft failed for idea %d", idea_id)
         return RedirectResponse(url="/today#draft-" + str(idea_id), status_code=303)
 
     @app.post("/ideation/{idea_id}/skip")
@@ -286,6 +245,8 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
         x_text: str = Form(""),
         threads_text: str = Form(""),
         image_url: str = Form(""),
+        schedule_date: str = Form(""),
+        schedule_time: str = Form(""),
     ):
         """Save edits → immediately schedule each platform in Postsyncer for
         the next available slot. Postsyncer becomes the system of record;
@@ -314,11 +275,26 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
                 (_json.dumps(drafts), datetime.utcnow().isoformat(), idea_id),
             )
 
-        # ── 2. Compute this idea's slot index ───────────────────────
-        # Count other ideas already approved/scheduled (waiting to publish).
-        # The new one's slot = next slot AFTER all of those.
+        # ── 2. Determine the slot ────────────────────────────────────
         tz = ZoneInfo(config.TIMEZONE)
         now = datetime.now(tz)
+
+        # User-picked date+time overrides the automatic next-slot logic.
+        custom_slot = None
+        if schedule_date.strip() and schedule_time.strip():
+            try:
+                custom_slot = datetime.strptime(
+                    f"{schedule_date.strip()} {schedule_time.strip()}", "%Y-%m-%d %H:%M"
+                ).replace(tzinfo=tz)
+                if custom_slot <= now:
+                    log.warning("Custom slot %s is in the past — falling back to next slot", custom_slot)
+                    custom_slot = None
+            except ValueError:
+                log.warning("Unparseable custom schedule %r %r — falling back", schedule_date, schedule_time)
+                custom_slot = None
+
+        # Count other ideas already approved/scheduled (waiting to publish).
+        # The new one's slot = next slot AFTER all of those.
         others = [
             i for i in (db.list_by_phase("approved") + db.list_by_phase("scheduled"))
             if i["id"] != idea_id
@@ -341,11 +317,11 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
                 break
             day_cursor = day_cursor + timedelta(days=1)
 
-        if not slots or len(slots) <= slot_index:
+        if custom_slot is None and (not slots or len(slots) <= slot_index):
             log.error("Could not compute upcoming slot for idea #%d", idea_id)
             return RedirectResponse(url="/today", status_code=303)
 
-        my_slot = slots[slot_index]
+        my_slot = custom_slot if custom_slot else slots[slot_index]
         schedule_for = {
             "date": my_slot.strftime("%Y-%m-%d"),
             "time": my_slot.strftime("%H:%M"),
@@ -786,6 +762,45 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
             f'  <div class="muted small">Image generated. Click Publish to attach it.</div>'
             f'</div>'
         )
+
+    # ─── Chat: talk to the agent from the web app ─────────
+
+    @app.get("/chat", response_class=HTMLResponse)
+    async def chat_get(request: Request):
+        if r := _require_auth(request):
+            return r
+        return templates.TemplateResponse(
+            request, "chat.html", _ctx({"page": "chat"}),
+        )
+
+    @app.post("/chat/message")
+    async def chat_message(request: Request, text: str = Form(...)):
+        if r := _require_auth(request):
+            return JSONResponse({"reply": "Session expired — reload and log in."}, status_code=401)
+        text = (text or "").strip()
+        if not text:
+            return JSONResponse({"reply": ""})
+        from ..content import conversation
+        loop = asyncio.get_running_loop()
+        try:
+            # Same brain as Telegram: shared history keyed by the owner's id,
+            # so a conversation started on the phone continues on the web.
+            reply = await loop.run_in_executor(
+                None,
+                lambda: conversation.chat(config.TELEGRAM_ALLOWED_USER_ID, text),
+            )
+        except Exception as e:
+            log.exception("web chat failed")
+            reply = f"(Something errored on my end: {str(e)[:200]})"
+        return JSONResponse({"reply": reply})
+
+    @app.post("/chat/reset")
+    async def chat_reset(request: Request):
+        if r := _require_auth(request):
+            return r
+        from ..content import conversation
+        conversation.reset(config.TELEGRAM_ALLOWED_USER_ID)
+        return JSONResponse({"ok": True})
 
     # ─── Backfill: schedule already-approved ideas in Postsyncer ──
 

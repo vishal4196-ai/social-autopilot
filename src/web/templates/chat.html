@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Chat · Vishal AI{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1>Chat</h1>
+    <div class="page-sub">Talk to your agent. Paste a LinkedIn or X post you like and it'll draft your version.</div>
+  </div>
+  <div class="page-actions">
+    <button class="btn small ghost" id="chat-reset">↺ New chat</button>
+  </div>
+</div>
+
+<div class="chat-shell">
+  <div class="chat-messages" id="chat-messages">
+    <div class="chat-bubble agent">
+      Hey 👋 What are we working on? Drop an idea, paste a post URL you like,
+      or ask me to find fresh angles.
+    </div>
+  </div>
+
+  <form class="chat-input-row" id="chat-form" autocomplete="off">
+    <textarea id="chat-input" rows="1"
+              placeholder="Message… (paste a post URL to get a draft)"
+              autofocus></textarea>
+    <button type="submit" class="btn primary" id="chat-send">Send</button>
+  </form>
+  <div class="muted small" id="chat-hint">Enter to send · Shift+Enter for a new line · drafting a URL takes ~30 sec</div>
+</div>
+
+<script>
+(function () {
+  const box = document.getElementById('chat-messages');
+  const form = document.getElementById('chat-form');
+  const input = document.getElementById('chat-input');
+  const sendBtn = document.getElementById('chat-send');
+  const resetBtn = document.getElementById('chat-reset');
+
+  function addBubble(text, who) {
+    const el = document.createElement('div');
+    el.className = 'chat-bubble ' + who;
+    el.textContent = text;
+    box.appendChild(el);
+    box.scrollTop = box.scrollHeight;
+    return el;
+  }
+
+  function setBusy(busy) {
+    sendBtn.disabled = busy;
+    input.disabled = busy;
+  }
+
+  async function send() {
+    const text = input.value.trim();
+    if (!text) return;
+    addBubble(text, 'user');
+    input.value = '';
+    input.style.height = 'auto';
+    setBusy(true);
+    const thinking = addBubble('thinking…', 'agent thinking');
+    try {
+      const res = await fetch('/chat/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ text }),
+      });
+      const data = await res.json();
+      thinking.remove();
+      addBubble(data.reply || '…', 'agent');
+    } catch (e) {
+      thinking.remove();
+      addBubble('(network error — try again)', 'agent');
+    } finally {
+      setBusy(false);
+      input.focus();
+    }
+  }
+
+  form.addEventListener('submit', function (e) { e.preventDefault(); send(); });
+
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  });
+
+  // Auto-grow the textarea
+  input.addEventListener('input', function () {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+  });
+
+  resetBtn.addEventListener('click', async function () {
+    await fetch('/chat/reset', { method: 'POST' });
+    box.innerHTML = '';
+    addBubble('Fresh chat. What are we working on?', 'agent');
+    input.focus();
+  });
+})();
+</script>
+{% endblock %}
