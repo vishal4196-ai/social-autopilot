@@ -13,18 +13,13 @@
 </div>
 
 <div class="chat-shell">
-  <div class="chat-messages" id="chat-messages">
-    <div class="chat-bubble agent">
-      Hey 👋 What are we working on? Drop an idea, paste a post URL you like,
-      or ask me to find fresh angles.
-    </div>
-  </div>
+  <div class="chat-messages" id="chat-messages"></div>
 
   <form class="chat-input-row" id="chat-form" autocomplete="off">
     <textarea id="chat-input" rows="1"
               placeholder="Message… (paste a post URL to get a draft)"
               autofocus></textarea>
-    <button type="submit" class="btn primary" id="chat-send">Send</button>
+    <button type="submit" class="btn primary chat-send" id="chat-send" aria-label="send">➤</button>
   </form>
   <div class="muted small" id="chat-hint">Enter to send · Shift+Enter for a new line · drafting a URL takes ~30 sec</div>
 </div>
@@ -37,13 +32,25 @@
   const sendBtn = document.getElementById('chat-send');
   const resetBtn = document.getElementById('chat-reset');
 
-  function addBubble(text, who) {
-    const el = document.createElement('div');
-    el.className = 'chat-bubble ' + who;
-    el.textContent = text;
-    box.appendChild(el);
+  const WELCOME = "Hey 👋 What are we working on? Drop an idea, paste a post URL you like, or ask me to find fresh angles.";
+
+  function addBubble(text, who, extraClass) {
+    const row = document.createElement('div');
+    row.className = 'chat-row ' + who;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'chat-avatar ' + who;
+    avatar.textContent = who === 'user' ? 'V' : 'AI';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble ' + who + (extraClass ? ' ' + extraClass : '');
+    bubble.textContent = text;
+
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+    box.appendChild(row);
     box.scrollTop = box.scrollHeight;
-    return el;
+    return row;
   }
 
   function setBusy(busy) {
@@ -58,7 +65,7 @@
     input.value = '';
     input.style.height = 'auto';
     setBusy(true);
-    const thinking = addBubble('thinking…', 'agent thinking');
+    const thinking = addBubble('thinking…', 'agent', 'thinking');
     try {
       const res = await fetch('/chat/message', {
         method: 'POST',
@@ -86,18 +93,20 @@
     }
   });
 
-  // Auto-grow the textarea
+  // Auto-grow the textarea up to a cap
   input.addEventListener('input', function () {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 160) + 'px';
   });
 
   resetBtn.addEventListener('click', async function () {
-    await fetch('/chat/reset', { method: 'POST' });
+    try { await fetch('/chat/reset', { method: 'POST' }); } catch (e) {}
     box.innerHTML = '';
-    addBubble('Fresh chat. What are we working on?', 'agent');
+    addBubble(WELCOME, 'agent');
     input.focus();
   });
+
+  addBubble(WELCOME, 'agent');
 })();
 </script>
 {% endblock %}

@@ -23,6 +23,14 @@ STATIC_DIR = WEB_ROOT / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
+# Cache-bust static assets per deploy: use style.css mtime so browsers pull
+# fresh CSS after every code push instead of serving a stale cached copy.
+try:
+    _css_version = str(int((STATIC_DIR / "style.css").stat().st_mtime))
+except OSError:
+    _css_version = "1"
+templates.env.globals["css_version"] = _css_version
+
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Vishal AI", docs_url=None, redoc_url=None)
