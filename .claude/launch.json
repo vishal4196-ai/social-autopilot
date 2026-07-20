@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "vishal-ai",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "src.main"],
+      "port": 8080
+    }
+  ]
+}

@@ -214,6 +214,7 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
         if r := _require_auth(request):
             return r
         from ..content import drafting
+        import urllib.parse as _up
         scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
         host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost"
         loop = asyncio.get_running_loop()
@@ -221,8 +222,19 @@ def register(app: FastAPI, templates: Jinja2Templates) -> None:
             await loop.run_in_executor(
                 None, lambda: drafting.draft_idea(idea_id, base_url=f"{scheme}://{host}")
             )
-        except Exception:
+        except Exception as e:
             log.exception("draft failed for idea %d", idea_id)
+            msg = str(e)
+            if "credit balance is too low" in msg:
+                msg = (
+                    "Anthropic API credits are exhausted. Top up at "
+                    "console.anthropic.com > Plans & Billing. Drafting, chat, and "
+                    "daily ideation are all paused until then."
+                )
+            return RedirectResponse(
+                url=f"/today?err={_up.quote(f'Draft #{idea_id} failed: {msg[:500]}')}",
+                status_code=303,
+            )
         return RedirectResponse(url="/today#draft-" + str(idea_id), status_code=303)
 
     @app.post("/ideation/{idea_id}/skip")
